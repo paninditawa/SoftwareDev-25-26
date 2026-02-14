@@ -195,15 +195,17 @@ def main():
                         
                     elif event.key == pygame.K_SPACE:
                         if drop_piece(board, selector_col, turn):
-                            if winning_move(board, turn):
-                                speak(f"Player {turn} wins in column {selector_col+1}.")
-                                game_over = True
-                                speak("Press zero to exit the game.")
-                            else:
-                                speak(f"Player {turn} dropped a piece in column {selector_col+1}.")
-                                turn = 2 if turn == 1 else 1
 
                             draw_board(screen, board, selector_col)
+                            speak(f"Player {turn} dropped a piece in column {selector_col+1}.")
+
+                            if winning_move(board, turn):
+                                speak_tutorial(f"Player {turn} wins in column {selector_col+1}.")
+                                game_over = True
+                                speak("Press R to restart game. Press zero to exit the game.")
+                            else:
+                                turn = 2 if turn == 1 else 1
+
                         else:
                             speak("Column full. Choose another column.")
 
