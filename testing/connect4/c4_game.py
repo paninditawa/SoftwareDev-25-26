@@ -2,6 +2,7 @@ import pygame
 import numpy as np
 import sys
 import win32com.client
+import time
 
 # -----------------------------
 # CONFIG
@@ -26,7 +27,7 @@ WHITE = (255, 255, 255)
 speaker = win32com.client.Dispatch("SAPI.SpVoice")
 
 # Non-interruptible speech (tutorial)
-def speak_tutorial(text):
+def speak_block(text):
     speaker.Speak(text)  # no flags = blocking, cannot be interrupted
 
 # Interruptible speech (arrow keys, drops, etc.)
@@ -80,12 +81,12 @@ def describe_column(board, col):
             empty_count = 0
 
     for r in range(ROWS):
-        cell = board[r][col]
+        cell = board[5-r][col]
         if cell == 0:
             empty_count += 1
         else:
-            flush()
             pieces.append("Red" if cell == 1 else "Yellow")
+    
     flush()
 
     return ", ".join(pieces) if pieces else "6 empty"
@@ -98,14 +99,14 @@ def announce_column(board, col):
 # DRAWING
 # -----------------------------
 def draw_board(screen, board, selector_col):
-    screen.fill(BLACK)
+    screen.fill(WHITE)
 
     # Selector arrow
     x = selector_col * SQUARESIZE + SQUARESIZE//2
-    pygame.draw.polygon(screen, WHITE, [
-        (x, 20),
-        (x-20, 60),
-        (x+20, 60)
+    pygame.draw.polygon(screen, BLACK, [
+        (x, 60),
+        (x-20, 20),
+        (x+20, 20)
     ])
 
     # Board background
@@ -113,7 +114,7 @@ def draw_board(screen, board, selector_col):
         for r in range(ROWS):
             pygame.draw.rect(screen, BLUE,
                              (c*SQUARESIZE, (r+1)*SQUARESIZE, SQUARESIZE, SQUARESIZE))
-            pygame.draw.circle(screen, BLACK,
+            pygame.draw.circle(screen, WHITE,
                                (c*SQUARESIZE + SQUARESIZE//2, (r+1)*SQUARESIZE + SQUARESIZE//2),
                                RADIUS)
 
@@ -121,15 +122,17 @@ def draw_board(screen, board, selector_col):
     for c in range(COLS):
         for r in range(ROWS):
             piece = board[r][c]
-            color = BLACK
+            color = WHITE
             if piece == 1:
                 color = RED
             elif piece == 2:
                 color = YELLOW
 
             pygame.draw.circle(screen, color,
-                               (c*SQUARESIZE + SQUARESIZE//2, HEIGHT - (r*SQUARESIZE + SQUARESIZE//2)),
+                               (c*SQUARESIZE + SQUARESIZE//2, ((r+1)*SQUARESIZE + SQUARESIZE//2)),
                                RADIUS)
+    
+    print(7*SQUARESIZE)
 
     pygame.display.update()
 
@@ -146,12 +149,19 @@ def main():
     selector_col = 3
     game_over = False
 
+    time.sleep(2) # brief pause before tutorial starts
     # Tutorial
-    speak_tutorial(
+    speak_block(
         "Welcome to Connect Four. "
+        "Connect 4 is a two‑player game played on a grid with seven columns. "
+        "On your turn, you choose a column number, and your piece drops to the lowest open space in that column. "
+        "Your goal is to make a line of four of your pieces in a row — across, up and down, or diagonally. "
+        "I’ll tell you where each piece lands so you can track the board. "
+        "Take turns placing pieces, and the first player to connect four wins. "
         "Use left and right arrow keys to move the selector. "
         "Press spacebar to drop your piece. "
-        "Press R to restart the game at any time."
+        "Press R to restart the game at any time. If you win and want to exit the game, press zero. "
+        "Let's play! "
     )
 
     draw_board(screen, board, selector_col)
@@ -200,9 +210,9 @@ def main():
                             speak(f"Player {turn} dropped a piece in column {selector_col+1}.")
 
                             if winning_move(board, turn):
-                                speak_tutorial(f"Player {turn} wins in column {selector_col+1}.")
+                                speak_block(f"Player {turn} wins in column {selector_col+1}.")
                                 game_over = True
-                                speak("Press R to restart game. Press zero to exit the game.")
+                                speak_block("Press R to restart game. Press zero to exit the game.")
                             else:
                                 turn = 2 if turn == 1 else 1
 
