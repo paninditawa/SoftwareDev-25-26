@@ -25,8 +25,13 @@ WHITE = (255, 255, 255)
 # -----------------------------
 speaker = win32com.client.Dispatch("SAPI.SpVoice")
 
+# Non-interruptible speech (tutorial)
+def speak_tutorial(text):
+    speaker.Speak(text)  # no flags = blocking, cannot be interrupted
+
+# Interruptible speech (arrow keys, drops, etc.)
 def speak(text):
-    speaker.Speak(text)
+    speaker.Speak(text, 3)  # async + purge
 
 # -----------------------------
 # GAME LOGIC
@@ -142,7 +147,7 @@ def main():
     game_over = False
 
     # Tutorial
-    speak(
+    speak_tutorial(
         "Welcome to Connect Four. "
         "Use left and right arrow keys to move the selector. "
         "Press spacebar to drop your piece. "

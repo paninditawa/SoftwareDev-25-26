@@ -19,7 +19,7 @@ Click the button below to start the PyGame version with:
 """)
 
 # Path to the PyGame file
-GAME_FILE = "connect4_streamlit/game.py"
+GAME_FILE = "connect4/c4_game.py"
 
 if not os.path.exists(GAME_FILE):
     st.error(f"Could not find {GAME_FILE}. Make sure it is in the same folder.")
@@ -27,4 +27,3 @@ else:
     if st.button("▶️ Launch Connect 4"):
         st.write("Launching game…")
         subprocess.Popen([sys.executable, GAME_FILE])
-        st.success("Game launched! Check your desktop window.")
