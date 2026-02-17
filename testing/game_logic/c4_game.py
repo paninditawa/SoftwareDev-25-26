@@ -131,8 +131,6 @@ def draw_board(screen, board, selector_col):
             pygame.draw.circle(screen, color,
                                (c*SQUARESIZE + SQUARESIZE//2, ((r+1)*SQUARESIZE + SQUARESIZE//2)),
                                RADIUS)
-    
-    print(7*SQUARESIZE)
 
     pygame.display.update()
 

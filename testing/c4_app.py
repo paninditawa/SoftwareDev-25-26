@@ -20,7 +20,7 @@ def show_c4():
     """)
 
     # Path to the PyGame file
-    GAME_PATH = os.path.join(os.path.dirname(__file__), "connect4/c4_game.py")
+    GAME_PATH = os.path.join(os.path.dirname(__file__), "game_logic/c4_game.py")
 
     if not os.path.exists(GAME_PATH):
         st.error(f"Could not find {GAME_PATH}. Make sure it is in the same folder.")
