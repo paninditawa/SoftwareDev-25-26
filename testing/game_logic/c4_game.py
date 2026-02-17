@@ -175,7 +175,7 @@ def main():
             if event.type == pygame.KEYDOWN:
 
                 # Quit after win
-                if game_over and event.key == pygame.K_DOWN:
+                if event.key == pygame.K_DOWN:
                     speak("Goodbye.")
                     pygame.quit()
                     sys.exit()
