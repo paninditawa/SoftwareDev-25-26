@@ -150,17 +150,18 @@ def main():
     game_over = False
 
     time.sleep(2) # brief pause before tutorial starts
+
     # Tutorial
     speak_block(
         "Welcome to Connect Four. "
         "Connect 4 is a two‑player game played on a grid with seven columns. "
         "On your turn, you choose a column number, and your piece drops to the lowest open space in that column. "
-        "Your goal is to make a line of four of your pieces in a row — across, up and down, or diagonally. "
+        "Your goal is to make a line of four of your pieces in a row: either 4 across, 4 up and down, or 4 diagonally. "
         "I’ll tell you where each piece lands so you can track the board. "
         "Take turns placing pieces, and the first player to connect four wins. "
         "Use left and right arrow keys to move the selector. "
         "Press spacebar to drop your piece. "
-        "Press R to restart the game at any time. If you win and want to exit the game, press zero. "
+        "Press the up arrow key to restart the game at any time. After a game, if you want to exit the game, press the down arrow key. "
         "Let's play! "
     )
 
@@ -176,13 +177,13 @@ def main():
             if event.type == pygame.KEYDOWN:
 
                 # Quit after win
-                if game_over and event.key == pygame.K_0:
+                if game_over and event.key == pygame.K_DOWN:
                     speak("Goodbye.")
                     pygame.quit()
                     sys.exit()
 
                 # Restart
-                if event.key == pygame.K_r:
+                if event.key == pygame.K_UP:
                     board = create_board()
                     turn = 1
                     selector_col = 3
@@ -212,7 +213,7 @@ def main():
                             if winning_move(board, turn):
                                 speak_block(f"Player {turn} wins in column {selector_col+1}.")
                                 game_over = True
-                                speak_block("Press R to restart game. Press zero to exit the game.")
+                                speak_block("Press the up arrow key to restart game. Press the down arrow key to exit the game.")
                             else:
                                 turn = 2 if turn == 1 else 1
 

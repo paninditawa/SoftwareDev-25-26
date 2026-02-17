@@ -6,8 +6,6 @@ import c4_app
 
 st.title("Accessible Game Space")
 
-st.badge(label= "I LOVE THIS SPACE!", color = "red", width = 2100)
-
 # Initialize navigation state
 if "page" not in st.session_state:
     st.session_state.page = "home"

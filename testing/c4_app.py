@@ -6,7 +6,7 @@ import os
 def show_c4():
     st.set_page_config(page_title="Connect 4 Launcher", layout="centered")
 
-    st.title("🎮 Accessible Connect 4")
+    st.title("🎮 Connect 4")
 
     st.write("""
     This is the launcher for the accessible Connect 4 game.
