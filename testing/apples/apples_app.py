@@ -1,4 +1,4 @@
-# Apples to Apples Game (w/text to speech)
+# Apples to Apples Game (w/text to speech + spoken instructions)
 import sqlite3
 import time
 import secrets
@@ -7,6 +7,7 @@ import random
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 import os
+import html
 
 data = os.path.join(os.path.dirname(__file__), "apples_min.db")
 hand_size = 10
@@ -50,7 +51,6 @@ verbs = [
 ]
 
 def build_red_deck() -> list[str]:
-    # combining adj, noun, and verb to make more cards
     deck = []
     for a in adj:
         for n in noun:
@@ -59,7 +59,6 @@ def build_red_deck() -> list[str]:
         for n in noun:
             for v in verbs:
                 deck.append(f"A {a} {n} {v}.")
-    # some pre-set cards
     deck += [
         "Existing.",
         "Centaurs.",
@@ -74,7 +73,6 @@ def build_red_deck() -> list[str]:
     return deck
 
 def build_green_deck() -> list[str]:
-    # combining templates of cards
     prompts = []
     for base in green_base:
         prompts.append(base)
@@ -91,7 +89,6 @@ def conn():
     c.row_factory = sqlite3.Row
     c.execute("PRAGMA journal_mode=WAL;")
     return c
-
 
 def init():
     c = conn()
@@ -135,10 +132,8 @@ def init():
     c.commit()
     c.close()
 
-
 def bump(c, gid, msg=""):
     c.execute("UPDATE games SET rev = rev + 1, last_msg=? WHERE id=?", (msg, gid))
-
 
 def game_by_code(code):
     c = conn()
@@ -146,13 +141,11 @@ def game_by_code(code):
     c.close()
     return dict(g) if g else None
 
-
 def players(gid):
     c = conn()
     rows = c.execute("SELECT * FROM players WHERE game_id=? ORDER BY id", (gid,)).fetchall()
     c.close()
     return [dict(r) for r in rows]
-
 
 def my_player(gid, token):
     if not token:
@@ -162,20 +155,17 @@ def my_player(gid, token):
     c.close()
     return dict(r) if r else None
 
-
 def get_hand(gid, pid):
     c = conn()
     r = c.execute("SELECT cards FROM hands WHERE game_id=? AND pid=?", (gid, pid)).fetchone()
     c.close()
     return json.loads(r["cards"]) if r and r["cards"] else []
 
-
 def set_hand(c, gid, pid, cards):
     c.execute(
         "INSERT OR REPLACE INTO hands(game_id, pid, cards) VALUES (?,?,?)",
         (gid, pid, json.dumps(cards, ensure_ascii=False)),
     )
-
 
 def draw_cards(deck, n):
     out = []
@@ -185,11 +175,9 @@ def draw_cards(deck, n):
         out.append(deck.pop())
     return out
 
-
 def ensure_decks(ss):
     ss.setdefault("green_deck", random.sample(green_deck, k=len(green_deck)))
     ss.setdefault("red_deck", random.sample(red_deck, k=len(red_deck)))
-
 
 def create_game(points_to_win=5):
     c = conn()
@@ -202,7 +190,6 @@ def create_game(points_to_win=5):
     c.commit()
     c.close()
     return code
-
 
 def join_game(code, name):
     g = game_by_code(code)
@@ -221,7 +208,6 @@ def join_game(code, name):
     c.close()
     return token
 
-
 def start_game(gid):
     c = conn()
     c.execute("BEGIN IMMEDIATE")
@@ -234,18 +220,15 @@ def start_game(gid):
     judge = int(ps[0]["id"])
     prompt = random.choice(green_deck)
 
-    # Big shuffled deck, deal WITHOUT replacement so every player gets 10
     deck = red_deck[:]
     random.shuffle(deck)
 
     need_total = len(ps) * hand_size
     if len(deck) < need_total:
-        # Extremely unlikely now, but keep it safe:
-        # If somehow not enough, allow repeats.
         deck = random.choices(red_deck, k=need_total)
 
     for p in ps:
-        hand = draw_cards(deck, hand_size)  # pops from deck
+        hand = draw_cards(deck, hand_size)
         set_hand(c, gid, int(p["id"]), hand)
 
     c.execute(
@@ -261,12 +244,10 @@ def submit_card(gid, round_num, pid, judge_pid, card):
         raise ValueError("Judge cannot submit.")
     c = conn()
     c.execute("BEGIN IMMEDIATE")
-    # phase check
     g = c.execute("SELECT * FROM games WHERE id=?", (gid,)).fetchone()
     if g["phase"] != "selecting":
         c.rollback(); c.close()
         raise ValueError("Not selecting.")
-    # ensure card in hand
     hand = json.loads(c.execute("SELECT cards FROM hands WHERE game_id=? AND pid=?", (gid, pid)).fetchone()["cards"])
     if card not in hand:
         c.rollback(); c.close()
@@ -275,16 +256,13 @@ def submit_card(gid, round_num, pid, judge_pid, card):
     hand.remove(card)
     set_hand(c, gid, pid, hand)
     bump(c, gid, "Card submitted.")
-    # if all non-judges submitted -> judging
     total = c.execute("SELECT COUNT(*) n FROM players WHERE game_id=?", (gid,)).fetchone()["n"]
     subs = c.execute("SELECT COUNT(*) n FROM subs WHERE game_id=? AND round_num=?", (gid, round_num)).fetchone()["n"]
-    # judge doesn't submit
     if subs >= total - 1:
         c.execute("UPDATE games SET phase='judging' WHERE id=?", (gid,))
         bump(c, gid, "All submissions received. Judging phase.")
     c.commit()
     c.close()
-
 
 def judge_pick(gid, round_num, judge_pid, winning_card):
     c = conn()
@@ -336,94 +314,167 @@ def judge_pick(gid, round_num, judge_pid, winning_card):
     c.commit()
     c.close()
 
+def build_instruction_text(g, me, is_judge, judge_name):
+    phase = g["phase"]
+    prompt = g["green"] or "No prompt yet."
+    round_num = g["round_num"]
 
-def inject_keyboard_tts():
+    intro = (
+        "This is Apples to Apples. "
+        "Use arrow keys to move and focus. "
+        "Press Enter on a focused main button to activate it. "
+    )
+
+    if phase == "lobby":
+        return (
+            intro
+            + "You are in the lobby. "
+            + "First create a game, or enter a game code and your name in the sidebar, then press Join. "
+            + "When at least two players have joined, press Start Game. "
+            + f"Current round will begin with judge {judge_name if judge_name != '—' else 'not assigned yet'}."
+        )
+
+    if not me:
+        return (
+            intro
+            + "You are viewing the game, but you have not joined yet. "
+            + "Enter the game code and your name in the sidebar, then press Join."
+        )
+
+    if phase == "selecting":
+        if is_judge:
+            return (
+                intro
+                + f"Round {round_num}. You are the judge. "
+                + f"The prompt is: {prompt} "
+                + "Wait while the other players choose and submit their cards. "
+                + "When all cards are submitted, the game will move to judging."
+            )
+        return (
+            intro
+            + f"Round {round_num}. Card selection phase. "
+            + f"The judge is {judge_name}. "
+            + f"The prompt is: {prompt} "
+            + "Move through your hand with the arrow keys. "
+            + "Press Enter on a card button to select that card. "
+            + "Then move to the Confirm and Submit button and press Enter to submit your answer."
+        )
+
+    if phase == "judging":
+        if is_judge:
+            return (
+                intro
+                + f"Round {round_num}. Judging phase. "
+                + f"The prompt is: {prompt} "
+                + "Anonymous submitted cards are shown as choices. "
+                + "Use the arrow keys to move through the options, select the winning card, then press Confirm Winner."
+            )
+        return (
+            intro
+            + f"Round {round_num}. Judging phase. "
+            + f"The judge is {judge_name}. "
+            + f"The prompt is: {prompt} "
+            + "Please wait while the judge picks the winning card."
+        )
+
+    if phase == "game_over":
+        return (
+            intro
+            + "Game over. "
+            + f"Last update: {g['last_msg']}. "
+            + "Review the scoreboard to hear the final scores."
+        )
+
+    return intro + "Game loaded."
+
+def inject_keyboard_tts(instruction_text=""):
+    safe_text = html.escape(instruction_text).replace("\n", " ")
     st.components.v1.html(
-        """
+        f"""
 <script>
-(function(){
+(function(){{
   if (window.__kbtts_installed) return;
   window.__kbtts_installed = true;
 
-  function speak(text){
-    try{
+  function speak(text){{
+    try{{
+      if (!text) return;
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       window.speechSynthesis.speak(u);
-    }catch(e){}
-  }
+    }}catch(e){{}}
+  }}
 
-  function isInSidebar(el){
-    try{
+  function isInSidebar(el){{
+    try{{
       return !!(el && el.closest && el.closest('[data-testid="stSidebar"]'));
-    }catch(e){ return false; }
-  }
+    }}catch(e){{ return false; }}
+  }}
 
-  function labelFor(el){
-    try{
+  function labelFor(el){{
+    try{{
       const id = el.getAttribute('id');
-      if (id){
-        const lab = parent.document.querySelector(`label[for="${id}"]`);
+      if (id){{
+        const lab = parent.document.querySelector(`label[for="${{id}}"]`);
         if (lab && lab.innerText) return lab.innerText.trim();
-      }
+      }}
       const wrap = el.closest('div');
-      if (wrap){
+      if (wrap){{
         const lab2 = wrap.querySelector('label');
         if (lab2 && lab2.innerText) return lab2.innerText.trim();
-      }
-    }catch(e){}
+      }}
+    }}catch(e){{}}
     return "";
-  }
+  }}
 
-  function sidebarInputs(){
+  function sidebarInputs(){{
     const sb = parent.document.querySelector('[data-testid="stSidebar"]');
     if (!sb) return [];
     const els = Array.from(sb.querySelectorAll('input, textarea'));
     return els.filter(e => e.offsetParent !== null);
-  }
+  }}
 
-  function mainButtons(){
-    // stAppViewContainer includes sidebar too; exclude sidebar subtree
+  function mainButtons(){{
     const app = parent.document.querySelector('[data-testid="stAppViewContainer"]') || parent.document.body;
     const sb = parent.document.querySelector('[data-testid="stSidebar"]');
     const btns = Array.from(app.querySelectorAll('button')).filter(b => b.offsetParent !== null);
     if (!sb) return btns;
     return btns.filter(b => !sb.contains(b));
-  }
+  }}
 
   let idx = 0;
-  let mode = "main"; // "sidebar" or "main"
+  let mode = "main";
 
-  function currentList(){
+  function currentList(){{
     return (mode === "sidebar") ? sidebarInputs() : mainButtons();
-  }
+  }}
 
-  function setModeFromActive(){
+  function setModeFromActive(){{
     const ae = parent.document.activeElement;
     mode = isInSidebar(ae) ? "sidebar" : "main";
-  }
+  }}
 
-  function speakFocused(el){
+  function speakFocused(el){{
     if (!el) return;
-    if (el.tagName === "BUTTON"){
+    if (el.tagName === "BUTTON"){{
       const t = (el.innerText || el.ariaLabel || "button").trim();
       if (t) speak(t);
-    } else if (el.tagName === "INPUT" || el.tagName === "TEXTAREA"){
+    }} else if (el.tagName === "INPUT" || el.tagName === "TEXTAREA"){{
       const t = (labelFor(el) || el.getAttribute("aria-label") || el.getAttribute("placeholder") || "input").trim();
       if (t) speak(t);
-    }
-  }
+    }}
+  }}
 
-  function focusAt(i){
+  function focusAt(i){{
     setModeFromActive();
     const els = currentList();
     if (!els.length) return;
     idx = (i + els.length) % els.length;
     els[idx].focus();
     speakFocused(els[idx]);
-  }
+  }}
 
-  parent.document.addEventListener('keydown', function(e){
+  parent.document.addEventListener('keydown', function(e){{
     const k = e.key;
     if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Enter'].includes(k)) return;
 
@@ -431,7 +482,6 @@ def inject_keyboard_tts():
     const els = currentList();
     if (!els.length) return;
 
-    // In sidebar mode: DO NOT hijack Enter (lets user type + prevents sidebar collapsing behavior)
     if (mode === "sidebar" && k === "Enter") return;
 
     e.preventDefault(); e.stopPropagation();
@@ -439,24 +489,34 @@ def inject_keyboard_tts():
     if (k === 'ArrowRight' || k === 'ArrowDown') focusAt(idx + 1);
     if (k === 'ArrowLeft'  || k === 'ArrowUp')   focusAt(idx - 1);
 
-    // In main mode: Enter clicks the focused button
-    if (mode === "main" && k === 'Enter'){
+    if (mode === "main" && k === 'Enter'){{
       const el = els[idx];
       if (el && el.tagName === 'BUTTON') el.click();
-    }
-  }, true);
+    }}
+  }}, true);
 
-  parent.document.addEventListener('focusin', function(e){
+  parent.document.addEventListener('focusin', function(e){{
     setModeFromActive();
-    // reset index so arrows start from current focus in the active list
     const els = currentList();
     const t = e.target;
     const j = els.indexOf(t);
     if (j >= 0) idx = j;
     speakFocused(t);
-  }, true);
+  }}, true);
 
-})();
+  function speakInstructionsOncePerChange(){{
+    try{{
+      const msg = "{safe_text}";
+      const last = window.__last_instruction_text || "";
+      if (msg && msg !== last){{
+        window.__last_instruction_text = msg;
+        setTimeout(() => speak(msg), 250);
+      }}
+    }}catch(e){{}}
+  }}
+
+  speakInstructionsOncePerChange();
+}})();
 </script>
         """,
         height=0,
@@ -467,7 +527,6 @@ init()
 st.set_page_config(page_title="Apples-to-Apples", layout="wide", initial_sidebar_state="expanded")
 
 st_autorefresh(interval=refresh_rate, key="refresh")
-inject_keyboard_tts()
 
 ss = st.session_state
 ss.setdefault("code", "")
@@ -496,15 +555,37 @@ with st.sidebar:
 
 g = game_by_code(ss["code"]) if ss["code"] else None
 if not g:
+    inject_keyboard_tts(
+        "Accessible Apples to Apples. Create a game, or type a game code and your name in the sidebar, then press Join."
+    )
     st.info("Create a game or enter a code to join.")
+    st.markdown(
+        """
+### How to Play / Accessibility
+- Create a game, or enter a game code and your name, then join.
+- Use arrow keys to move between controls.
+- In the sidebar, arrows move between text inputs.
+- In the main area, arrows move between buttons.
+- Press Enter on a focused main button to activate it.
+- One player is the judge each round.
+- Other players pick the funniest or best matching red card for the green prompt.
+        """
+    )
     st.stop()
 
 gid = int(g["id"])
 ps = players(gid)
 me = my_player(gid, ss["token"]) if ss["token"] else None
 judge_name = next((p["name"] for p in ps if g["judge_pid"] and int(p["id"]) == int(g["judge_pid"])), "—")
+is_judge = bool(g["judge_pid"]) and me and int(me["id"]) == int(g["judge_pid"])
 
-# Status summary (always visible)
+instruction_text = build_instruction_text(g, me, is_judge, judge_name)
+inject_keyboard_tts(instruction_text)
+
+st.markdown("### How to Play / Accessibility")
+st.info(instruction_text)
+
+# Status summary
 st.markdown(
     f"""
 **Status**
@@ -537,7 +618,6 @@ if not me:
     st.warning("Join to play")
     st.stop()
 
-is_judge = bool(g["judge_pid"]) and int(me["id"]) == int(g["judge_pid"])
 round_num = int(g["round_num"])
 
 # Selecting
@@ -550,7 +630,6 @@ if g["phase"] == "selecting":
         if not hand:
             st.info("No cards.")
         else:
-            # show as simple buttons (arrow keys can focus these without Tab)
             cols = st.columns(5)
             for i, card in enumerate(hand[:hand_size]):
                 with cols[i % 5]:
@@ -590,7 +669,6 @@ elif g["phase"] == "judging":
 
         fixed_cards = ss[order_key]
 
-        # Optional: if submission set changed unexpectedly, rebuild once
         if sorted(fixed_cards) != sorted(cards):
             fixed_cards = cards[:]
             random.shuffle(fixed_cards)
