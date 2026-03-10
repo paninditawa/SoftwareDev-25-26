@@ -1,4 +1,4 @@
-# Apples to Apples Game (w/ text to speech)
+# Apples to Apples Game (w/text to speech)
 import sqlite3
 import time
 import secrets
@@ -28,7 +28,7 @@ green_base = [
 
 adj = [
     "haunted","tiny","gigantic","mysterious","unreasonably confident","overly dramatic","cursed","sparkly",
-    "noisy","invisible","self-aware","gluten-free","sad","legendary","suspicious","extremely polite",
+    "noisy","invisible","self-aware","gluten-free","sad","legendary","suspicious","extremely polite","weird",
     "ancient","futuristic","sticky","chaotic","friendly","aggressively helpful","melancholy","radioactive"
 ]
 
@@ -38,7 +38,7 @@ noun = [
     "traffic cone","treadmill","calendar invite","laptop","spaghetti","stapler","thermostat"
 ]
 
-verb = [
+verbs = [
     "that only works when you cry",
     "that judges you silently",
     "that demands compliments",
@@ -57,7 +57,7 @@ def build_red_deck() -> list[str]:
             deck.append(f"A {a} {n}.")
     for a in adj:
         for n in noun:
-            for v in verb:
+            for v in verbs:
                 deck.append(f"A {a} {n} {v}.")
     # some pre-set cards
     deck += [
@@ -83,8 +83,8 @@ def build_green_deck() -> list[str]:
         prompts.append(base + " (in one word)")
     return prompts
 
-green = build_green_deck()
-red = build_red_deck()
+green_deck = build_green_deck()
+red_deck = build_red_deck()
 
 def conn():
     c = sqlite3.connect(data, check_same_thread=False)
@@ -187,8 +187,8 @@ def draw_cards(deck, n):
 
 
 def ensure_decks(ss):
-    ss.setdefault("green_deck", random.sample(green, k=len(green)))
-    ss.setdefault("red_deck", random.sample(red, k=len(red)))
+    ss.setdefault("green_deck", random.sample(green_deck, k=len(green_deck)))
+    ss.setdefault("red_deck", random.sample(red_deck, k=len(red_deck)))
 
 
 def create_game(points_to_win=5):
@@ -232,17 +232,17 @@ def start_game(gid):
         raise ValueError("Need at least 2 players.")
 
     judge = int(ps[0]["id"])
-    green = random.choice(green)
+    prompt = random.choice(green_deck)
 
     # Big shuffled deck, deal WITHOUT replacement so every player gets 10
-    deck = red[:]
+    deck = red_deck[:]
     random.shuffle(deck)
 
     need_total = len(ps) * hand_size
     if len(deck) < need_total:
         # Extremely unlikely now, but keep it safe:
         # If somehow not enough, allow repeats.
-        deck = random.choices(red, k=need_total)
+        deck = random.choices(red_deck, k=need_total)
 
     for p in ps:
         hand = draw_cards(deck, hand_size)  # pops from deck
@@ -250,7 +250,7 @@ def start_game(gid):
 
     c.execute(
         "UPDATE games SET phase='selecting', judge_pid=?, green=?, round_num=1 WHERE id=?",
-        (judge, green, gid),
+        (judge, prompt, gid),
     )
     bump(c, gid, "Game started. Selecting phase.")
     c.commit()
@@ -307,7 +307,6 @@ def judge_pick(gid, round_num, judge_pid, winning_card):
     winner_pid = int(row["pid"])
     c.execute("UPDATE players SET score=score+1 WHERE game_id=? AND id=?", (gid, winner_pid))
 
-    # check win
     pts = int(g["points_to_win"])
     w = c.execute("SELECT name,score FROM players WHERE game_id=? AND id=?", (gid, winner_pid)).fetchone()
     if int(w["score"]) >= pts:
@@ -316,24 +315,22 @@ def judge_pick(gid, round_num, judge_pid, winning_card):
         c.commit(); c.close()
         return
 
-    # rotate judge
     pids = [int(r["id"]) for r in c.execute("SELECT id FROM players WHERE game_id=? ORDER BY id", (gid,)).fetchall()]
     i = pids.index(int(judge_pid))
     next_judge = pids[(i + 1) % len(pids)]
 
-    # give new prompt + deal back to 10 cards
-    green = random.choice(green)
+    prompt = random.choice(green_deck)
     for pid in pids:
         hand = json.loads(c.execute("SELECT cards FROM hands WHERE game_id=? AND pid=?", (gid, pid)).fetchone()["cards"])
         need = max(0, hand_size - len(hand))
-        tmp = red[:]
+        tmp = red_deck[:]
         random.shuffle(tmp)
         hand.extend(draw_cards(tmp, need))
         set_hand(c, gid, pid, hand)
 
     c.execute(
         "UPDATE games SET phase='selecting', round_num=round_num+1, judge_pid=?, green=? WHERE id=?",
-        (next_judge, green, gid),
+        (next_judge, prompt, gid),
     )
     bump(c, gid, f"Round winner: {w['name']}. New round selecting.")
     c.commit()
@@ -577,17 +574,37 @@ elif g["phase"] == "judging":
     else:
         st.subheader("Anonymous submissions")
         c = conn()
-        subs = c.execute("SELECT card FROM subs WHERE game_id=? AND round_num=?", (gid, round_num)).fetchall()
+        subs = c.execute(
+            "SELECT card FROM subs WHERE game_id=? AND round_num=?",
+            (gid, round_num)
+        ).fetchall()
         c.close()
+
         cards = [r["card"] for r in subs]
-        random.shuffle(cards)
-        if not cards:
+
+        order_key = f"judge_cards_{gid}_{round_num}"
+        if order_key not in ss:
+            fixed_cards = cards[:]
+            random.shuffle(fixed_cards)
+            ss[order_key] = fixed_cards
+
+        fixed_cards = ss[order_key]
+
+        # Optional: if submission set changed unexpectedly, rebuild once
+        if sorted(fixed_cards) != sorted(cards):
+            fixed_cards = cards[:]
+            random.shuffle(fixed_cards)
+            ss[order_key] = fixed_cards
+
+        if not fixed_cards:
             st.info("No submissions yet.")
         else:
-            choice = st.radio("Pick winning card", cards, index=0)
+            choice = st.radio("Pick winning card", fixed_cards, key=f"judge_choice_{gid}_{round_num}")
             if st.button("Confirm Winner", type="primary"):
                 try:
                     judge_pick(gid, round_num, int(me["id"]), choice)
+                    ss.pop(order_key, None)
+                    ss.pop(f"judge_choice_{gid}_{round_num}", None)
                 except Exception as e:
                     st.error(str(e))
 
