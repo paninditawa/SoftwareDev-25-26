@@ -16,6 +16,9 @@ st.sidebar.title("Navigation")
 if st.sidebar.button("Home"):
     st.session_state.page = "home_page"
 
+if st.sidebar.button("Hangman"):
+    st.session_state.page = "hangman"
+
 if st.sidebar.button("Maze Game"):
     st.session_state.page = "maze_app"
 
@@ -51,3 +54,6 @@ elif st.session_state.page == "madlibs_app":
 
 elif st.session_state.page == "c4":
     c4_app.show_c4()
+
+elif st.session_state.page == "hangman":
+    hangman.show_hangman()
