@@ -12,6 +12,10 @@ game = Game()
 connections = [None, None]
 lock = threading.Lock()
 
+# The game can be reset for a rematch after win/lose.
+game_over = False
+rematch_requests = set()
+
 
 def parse_args():
     p = argparse.ArgumentParser(description="Battleship server")
@@ -37,6 +41,7 @@ def broadcast(message: str):
 
 
 def handle_client(conn, player_id: int):
+    global game, game_over, rematch_requests
     connections[player_id] = conn
     _send(player_id, f"PLAYER {player_id}")
     _send(player_id, "INFO Place ships using: PLACE <ship> <row> <col> <H/V> then READY when done.")
@@ -106,6 +111,24 @@ def handle_client(conn, player_id: int):
                     else:
                         _send(player_id, f"READY_ERR {msg}")
 
+                elif cmd == "REMATCH":
+                    if not game_over:
+                        _send(player_id, "ERROR Not in game-over state")
+                    else:
+                        rematch_requests.add(player_id)
+                        _send(player_id, "REMATCH_OK")
+                        # When both players request rematch, reset game state.
+                        if len(rematch_requests) == 2:
+                            game = Game()
+                            game_over = False
+                            rematch_requests.clear()
+                            broadcast("RESET")
+                            broadcast("INFO Place ships using: PLACE <ship> <row> <col> <H/V> then READY when done.")
+
+                elif cmd == "QUIT":
+                    # Client is quitting; close the connection.
+                    break
+
                 elif cmd == "FIRE" and len(parts) == 3:
                     try:
                         row_i = int(parts[1])
@@ -143,6 +166,8 @@ def handle_client(conn, player_id: int):
                         _send(player_id, f"RESULT HIT {row_i} {col_i} {ship} {sunk}")
                         _send(1 - player_id, f"OPPONENT_FIRE {row_i} {col_i} HIT {ship} {sunk}")
                         if win:
+                            game_over = True
+                            rematch_requests.clear()
                             _send(player_id, "WIN")
                             _send(1 - player_id, "LOSE")
                         else:

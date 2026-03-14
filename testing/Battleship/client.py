@@ -1,4 +1,5 @@
 import argparse
+import os
 import pygame
 import socket
 import threading
@@ -20,10 +21,31 @@ if str(_repo_root) not in sys.path:
 
 # Cross-platform TTS helper
 try:
-    from tts import speak as _tts_speak
+    from tts import speak as _tts_speak, speak_interrupt as _tts_speak_interrupt
 except ImportError:
     def _tts_speak(text: str):
         print(text)
+
+    def _tts_speak_interrupt(text: str):
+        print(text)
+
+# Track the most recent spoken text so we can show it on-screen (useful if audio isn't audible).
+last_spoken_text = ""
+
+def tts_speak(text: str, interrupt: bool = False):
+    """Speak text while also recording it for on-screen display."""
+    global last_spoken_text
+    last_spoken_text = text
+    if interrupt:
+        _tts_speak_interrupt(text)
+    else:
+        _tts_speak(text)
+
+
+# Keep existing code paths working with speak()/speak_interrupt().
+# This allows the rest of the file to continue using `speak()` without changes.
+speak = tts_speak
+speak_interrupt = lambda text: tts_speak(text, interrupt=True)
 
 HOST = "127.0.0.1"
 PORT = 5555
@@ -84,7 +106,7 @@ else:
     except Exception:
         player_id = 0
 print(f"Connected as Player {player_id} to {args.host}:{args.port}")
-_tts_speak(f"Connected as player {player_id}")
+speak(f"Connected as player {player_id}")
 
 # Game state
 phase = "placement"  # or "battle"
@@ -116,6 +138,9 @@ last_send_error = ""
 server_connected = True
 server_error = ""
 
+# Game over state
+game_over_message = ""
+
 
 def describe_status():
     if phase == "placement":
@@ -127,6 +152,8 @@ def describe_status():
         return "All ships placed. Waiting for opponent."
     if phase == "waiting":
         return "Waiting for opponent to finish placement."
+    if phase == "game_over":
+        return "Game over: press R to rematch or Q to quit."
     return "Your turn" if my_turn else "Opponent's turn"
 
 
@@ -157,6 +184,8 @@ def mark_ship_placement(ship_index: int, row: int, col: int, orient: str):
 def listen_server():
     global my_turn, phase, ready, opponent_ready, placed_count, awaiting_place_response
     global pending_placement_row, pending_placement_col, pending_placement_orientation, pending_ship_index
+    global own_ships, hits_on_me, hits_on_opponent, selected_row, selected_col, orientation
+    global server_connected, server_error, game_over_message
     buffer = ""
     while True:
         try:
@@ -180,27 +209,48 @@ def listen_server():
 
                     if cmd == "START":
                         phase = "battle"
-                        _tts_speak("Both players ready. Battle begins.")
+                        speak("Both players ready. Battle begins.")
 
                     elif cmd == "YOUR_TURN":
                         my_turn = True
-                        _tts_speak("Your turn.")
+                        speak("Your turn.")
 
                     elif cmd == "OPPONENT_TURN":
                         my_turn = False
-                        _tts_speak("Opponent's turn.")
+                        speak("Opponent's turn.")
 
                     elif cmd == "READY_OK":
                         ready = True
                         phase = "waiting"
-                        _tts_speak("Ready. Waiting for opponent.")
+                        speak("Ready. Waiting for opponent.")
 
                     elif cmd == "WAITING_FOR_OPPONENT":
-                        _tts_speak("Waiting for opponent to finish placing ships.")
+                        speak("Waiting for opponent to finish placing ships.")
 
                     elif cmd == "OPPONENT_READY":
                         opponent_ready = True
-                        _tts_speak("Opponent is ready.")
+                        speak("Opponent is ready.")
+
+                    elif cmd == "RESET":
+                        # Server requested a new game - reset local state.
+                        phase = "placement"
+                        placed_count = 0
+                        orientation = "H"
+                        own_ships = [[False] * BOARD_SIZE for _ in range(BOARD_SIZE)]
+                        hits_on_me = [[None] * BOARD_SIZE for _ in range(BOARD_SIZE)]
+                        hits_on_opponent = [[None] * BOARD_SIZE for _ in range(BOARD_SIZE)]
+                        selected_row = 0
+                        selected_col = 0
+                        ready = False
+                        opponent_ready = False
+                        my_turn = False
+                        awaiting_place_response = False
+                        pending_placement_row = None
+                        pending_placement_col = None
+                        pending_placement_orientation = None
+                        pending_ship_index = None
+                        game_over_message = ""
+                        speak("Starting a new game. Place your ships.")
 
                     elif cmd == "PLACE_OK":
                         # Confirm the ship we placed (optimistic placement already advanced the UI)
@@ -214,7 +264,7 @@ def listen_server():
                             )
                         else:
                             mark_ship_placement(ship_index, selected_row, selected_col, orientation)
-                        _tts_speak("Ship placed.")
+                        speak("Ship placed.")
                         awaiting_place_response = False
                         pending_placement_row = None
                         pending_placement_col = None
@@ -224,7 +274,7 @@ def listen_server():
                             send_line("READY")
 
                     elif cmd == "ALL_SHIPS_PLACED":
-                        _tts_speak("All ships placed.")
+                        speak("All ships placed.")
 
                     elif cmd == "PLACE_ERR":
                         # Rollback optimistic placement if we already advanced the UI
@@ -236,14 +286,14 @@ def listen_server():
                         pending_placement_col = None
                         pending_placement_orientation = None
                         message = " ".join(parts[1:])
-                        _tts_speak(f"Placement error: {message}")
+                        speak(f"Placement error: {message}")
 
                     elif cmd == "RESULT":
                         if parts[1] == "MISS":
                             r, c = int(parts[2]), int(parts[3])
                             hits_on_opponent[r][c] = "miss"
                             MISS_SOUND.play()
-                            _tts_speak("Miss")
+                            speak("Miss")
                         elif parts[1] == "HIT":
                             r, c = int(parts[2]), int(parts[3])
                             ship = parts[4]
@@ -251,33 +301,37 @@ def listen_server():
                             hits_on_opponent[r][c] = "hit"
                             HIT_SOUND.play()
                             if sunk:
-                                _tts_speak(f"Hit. You sunk the {ship}.")
+                                speak(f"Hit. You sunk the {ship}.")
                             else:
-                                _tts_speak(f"Hit {ship}.")
+                                speak(f"Hit {ship}.")
                         elif parts[1] == "USED":
                             USED_SOUND.play()
-                            _tts_speak("Already fired there.")
+                            speak("Already fired there.")
                         elif parts[1] == "WIN":
                             WIN_SOUND.play()
-                            _tts_speak("You win!")
+                            game_over_message = "You win!"
+                            phase = "game_over"
+                            speak(f"{game_over_message} Press R to rematch or Q to quit.")
                         elif parts[1] == "LOSE":
                             WIN_SOUND.play()
-                            _tts_speak("You lose.")
+                            game_over_message = "You lose."
+                            phase = "game_over"
+                            speak(f"{game_over_message} Press R to rematch or Q to quit.")
 
                     elif cmd == "OPPONENT_FIRE":
                         r, c = int(parts[1]), int(parts[2])
                         hit_miss = parts[3]
                         if hit_miss == "HIT":
                             hits_on_me[r][c] = True
-                            _tts_speak("Opponent hit your ship.")
+                            speak("Opponent hit your ship.")
                         else:
                             hits_on_me[r][c] = False
-                            _tts_speak("Opponent missed.")
+                            speak("Opponent missed.")
 
                     else:
                         # Helpful debug output if server sends something unexpected.
                         print("Unknown server message:", line)
-                        _tts_speak(f"Server said: {line}")
+                        speak(f"Server said: {line}")
 
         except Exception as e:
             server_connected = False
@@ -288,7 +342,7 @@ def listen_server():
 
 threading.Thread(target=listen_server, daemon=True).start()
 
-_tts_speak("Battleship. Use arrow keys to move, R to rotate during placement, and Enter or Space to confirm.")
+speak("Battleship. Use arrow keys to move, R to rotate during placement, and Enter or Space to confirm.")
 
 running = True
 
@@ -333,24 +387,32 @@ while running:
     pygame.draw.rect(screen, (0, 0, 150), hover_rect, 3)
 
     status_text = describe_status()
-    text_surface = font.render(status_text, True, (255, 255, 255))
-    screen.blit(text_surface, (20, WINDOW_HEIGHT - 30))
+    status_surface = font.render(status_text, True, (255, 255, 255))
+    screen.blit(status_surface, (20, WINDOW_HEIGHT - 50))
+
+    if last_spoken_text:
+        spoken_surface = font.render(f"Spoke: {last_spoken_text}", True, (200, 200, 50))
+        screen.blit(spoken_surface, (20, WINDOW_HEIGHT - 30))
+
+    if game_over_message:
+        game_over_surface = font.render(game_over_message, True, (255, 255, 255))
+        screen.blit(game_over_surface, (20, WINDOW_HEIGHT - 10))
 
     if last_server_line:
         debug_surface = font.render(f"Server: {last_server_line}", True, (200, 200, 200))
-        screen.blit(debug_surface, (20, WINDOW_HEIGHT - 50))
+        screen.blit(debug_surface, (20, WINDOW_HEIGHT - 70))
 
     if last_send_line:
         debug_surface = font.render(f"Sent: {last_send_line}", True, (200, 200, 200))
-        screen.blit(debug_surface, (20, WINDOW_HEIGHT - 70))
+        screen.blit(debug_surface, (20, WINDOW_HEIGHT - 90))
 
     if last_send_error:
         debug_surface = font.render(f"Send error: {last_send_error}", True, (255, 100, 100))
-        screen.blit(debug_surface, (20, WINDOW_HEIGHT - 90))
+        screen.blit(debug_surface, (20, WINDOW_HEIGHT - 110))
 
     if not server_connected:
         debug_surface = font.render(f"Server disconnected: {server_error}", True, (255, 100, 100))
-        screen.blit(debug_surface, (20, WINDOW_HEIGHT - 110))
+        screen.blit(debug_surface, (20, WINDOW_HEIGHT - 130))
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -358,20 +420,37 @@ while running:
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_UP:
-                selected_row = max(0, selected_row - 1)
-                _tts_speak(f"Selected row {selected_row + 1}, column {selected_col + 1}")
+                if selected_row > 0:
+                    selected_row -= 1
+                    speak_interrupt(f"Selected row {selected_row + 1}, column {selected_col + 1}")
             elif event.key == pygame.K_DOWN:
-                selected_row = min(BOARD_SIZE - 1, selected_row + 1)
-                _tts_speak(f"Selected row {selected_row + 1}, column {selected_col + 1}")
+                if selected_row < BOARD_SIZE - 1:
+                    selected_row += 1
+                    speak_interrupt(f"Selected row {selected_row + 1}, column {selected_col + 1}")
             elif event.key == pygame.K_LEFT:
-                selected_col = max(0, selected_col - 1)
-                _tts_speak(f"Selected row {selected_row + 1}, column {selected_col + 1}")
+                if selected_col > 0:
+                    selected_col -= 1
+                    speak_interrupt(f"Selected row {selected_row + 1}, column {selected_col + 1}")
             elif event.key == pygame.K_RIGHT:
-                selected_col = min(BOARD_SIZE - 1, selected_col + 1)
-                _tts_speak(f"Selected row {selected_row + 1}, column {selected_col + 1}")
+                if selected_col < BOARD_SIZE - 1:
+                    selected_col += 1
+                    speak_interrupt(f"Selected row {selected_row + 1}, column {selected_col + 1}")
             elif event.key == pygame.K_r and phase == "placement":
                 orientation = "V" if orientation == "H" else "H"
-                _tts_speak(f"Orientation {orientation}")
+                speak(f"Orientation {orientation}")
+            elif event.key == pygame.K_r and phase == "game_over":
+                send_line("REMATCH")
+                game_over_message = "Rematch requested. Waiting for opponent."
+                speak(game_over_message)
+            elif event.key == pygame.K_t:
+                # Test audio output (plays a short tone)
+                tone = generate_tone(800, duration=0.2)
+                tone.play()
+                last_spoken_text = "Audio test tone"
+            elif event.key in (pygame.K_q, pygame.K_ESCAPE) and phase == "game_over":
+                # Quit the client (keep the server running)
+                send_line("QUIT")
+                running = False
             elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
                 if phase == "placement":
                     if not awaiting_place_response and placed_count < len(SHIP_ORDER):
@@ -386,25 +465,28 @@ while running:
                         send_line(f"PLACE {pending_ship_index} {selected_row} {selected_col} {orientation}")
                         awaiting_place_response = True
                         last_place_request_time = time.time()
-                        _tts_speak(f"Placing {ship_name} at row {selected_row + 1}, column {selected_col + 1} {orientation}")
+                        speak(f"Placing {ship_name} at row {selected_row + 1}, column {selected_col + 1} {orientation}")
                     elif awaiting_place_response and pending_ship_index is not None and time.time() - last_place_request_time > 1:
                         # Retry in case the server response was lost
                         send_line(f"PLACE {pending_ship_index} {pending_placement_row} {pending_placement_col} {pending_placement_orientation}")
                         last_place_request_time = time.time()
-                        _tts_speak("Retrying placement.")
+                        speak("Retrying placement.")
                     elif not ready and placed_count >= len(SHIP_ORDER):
                         # All ships have been placed locally; tell the server we're ready.
                         send_line("READY")
-                        _tts_speak("Ready. Waiting for opponent.")
+                        speak("Ready. Waiting for opponent.")
+                elif phase == "game_over":
+                    # Ignore fire commands after game end.
+                    pass
                 else:
                     if my_turn:
                         send_line(f"FIRE {selected_row} {selected_col}")
-                        _tts_speak(f"Firing at row {selected_row + 1}, column {selected_col + 1}")
+                        speak(f"Firing at row {selected_row + 1}, column {selected_col + 1}")
 
     # If we haven't heard back from the server after a placement request, allow retry.
     if awaiting_place_response and time.time() - last_place_request_time > 3:
         awaiting_place_response = False
-        _tts_speak("No response from server. You can press space again to retry placement.")
+        speak("No response from server. You can press space again to retry placement.")
 
     pygame.display.flip()
 
