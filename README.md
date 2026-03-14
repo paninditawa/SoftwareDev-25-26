@@ -1,6 +1,6 @@
 # HelloWorld GameSpace
 
-Accessible collection of mini-games with a desktop-first launcher, Firebase login, and built-in voice announcements.
+Accessible collection of mini-games with a desktop-first launcher, optional Firebase login, and built-in voice announcements.
 
 New contributors can follow the short setup guide in `CONTRIBUTING.md`.
 
@@ -12,9 +12,10 @@ Run these from repo root:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-$env:FIREBASE_API_KEY="YOUR_FIREBASE_WEB_API_KEY"
 python launch_gamespace.py
 ```
+
+Firebase key is optional for testers. If no key is set, the launcher starts in Guest Tester mode.
 
 ## Recommended: Desktop Launcher
 
@@ -54,9 +55,9 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-### 5) Configure Firebase API key
+### 5) Optional: Configure Firebase API key (owner mode)
 
-The launcher requires Firebase email/password auth.
+Most users can skip this. Configure Firebase only if you want sign in/sign up/delete account features.
 
 Choose one option:
 
@@ -91,7 +92,8 @@ python launch_gamespace.py
 
 - Keyboard-first navigation.
 - Built-in spoken focus/context announcements.
-- Firebase account sign-in/sign-up/delete account.
+- Guest Tester mode when Firebase is not configured.
+- Firebase account sign-in/sign-up/delete account when configured.
 - Launch support for Hangman, Maze, Mad Libs, Connect 4, Apples to Apples, and Battleship.
 
 ## Build Windows Executable (Optional)
@@ -112,7 +114,8 @@ Run:
 
 ## Troubleshooting Quick Notes
 
-- If login says Firebase key is missing, set FIREBASE_API_KEY or create one of the secrets files listed above.
+- If you do not configure Firebase, the app runs in Guest Tester mode automatically.
+- If you want account features, set FIREBASE_API_KEY or create one of the secrets files listed above.
 - If PowerShell blocks activation, run:
 
 ```powershell

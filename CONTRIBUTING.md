@@ -5,8 +5,7 @@
 1. Clone and open the repo.
 2. Create and activate a virtual environment.
 3. Install dependencies.
-4. Set your Firebase API key.
-5. Run the desktop launcher.
+4. Run the desktop launcher.
 
 Use these commands from repo root.
 
@@ -17,7 +16,6 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-$env:FIREBASE_API_KEY="YOUR_FIREBASE_WEB_API_KEY"
 python launch_gamespace.py
 ```
 
@@ -28,9 +26,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-export FIREBASE_API_KEY="YOUR_FIREBASE_WEB_API_KEY"
 python launch_gamespace.py
 ```
+
+No Firebase setup is needed for normal testing. The desktop app will use Guest Tester mode.
 
 ## Before You Commit
 
@@ -40,7 +39,8 @@ python launch_gamespace.py
 
 ## Secrets
 
-- Use `.streamlit/secrets.toml` or `testing/.streamlit/secrets.toml` for local keys.
+- Firebase is owner-only. Most contributors should not set a key.
+- If you do need account features, use `.streamlit/secrets.toml` or `testing/.streamlit/secrets.toml` locally.
 - Keep `REPLACE_WITH_FIREBASE_WEB_API_KEY` in any committed template files.
 
 ## Optional Legacy Run (Streamlit)

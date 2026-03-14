@@ -87,12 +87,14 @@ class GameSpaceApp(ctk.CTk):
         self.configure(fg_color="#f2f5fb")
 
         self.auth_client = FirebaseAuthClient.from_workspace(REPO_ROOT)
+        self.guest_mode = not self.auth_client.is_configured()
         self.speech = SpeechManager(on_announce=self._set_status)
         self.auth_session: AuthSession | None = None
         self.server_process: subprocess.Popen | None = None
         self.current_screen = "startup"
         self.current_page_key = "home"
-        self.nav_index = MENU_ORDER.index("home")
+        self.menu_order = [key for key in MENU_ORDER if key != "account"] if self.guest_mode else list(MENU_ORDER)
+        self.nav_index = self.menu_order.index("home")
         self.action_index = 0
         self.nav_mode = True
         self.nav_buttons: dict[str, ctk.CTkButton] = {}
@@ -147,7 +149,15 @@ class GameSpaceApp(ctk.CTk):
 
         apples_service.init()
 
-        if self.auth_client.is_configured():
+        if self.guest_mode:
+            self.auth_session = AuthSession(
+                email="Guest Tester",
+                id_token="",
+                refresh_token="",
+                local_id="",
+            )
+            self.show_menu()
+        elif self.auth_client.is_configured():
             self.show_login()
         else:
             self.show_config_error()
@@ -318,9 +328,9 @@ class GameSpaceApp(ctk.CTk):
         if self._is_text_entry(self.focus_get()):
             return None
 
-        current_index = MENU_ORDER.index(self.current_page_key)
-        new_index = (current_index + delta) % len(MENU_ORDER)
-        new_key = MENU_ORDER[new_index]
+        current_index = self.menu_order.index(self.current_page_key)
+        new_index = (current_index + delta) % len(self.menu_order)
+        new_key = self.menu_order[new_index]
         self.nav_index = new_index
         self.select_page(new_key, announce=True)
         self.nav_mode = True
@@ -552,6 +562,9 @@ class GameSpaceApp(ctk.CTk):
             self.show_login()
             return
 
+        if self.current_page_key not in self.menu_order:
+            self.current_page_key = "home"
+
         root = ctk.CTkFrame(self.content, fg_color="transparent")
         root.pack(fill="both", expand=True)
         root.grid_columnconfigure(0, weight=0)
@@ -567,13 +580,17 @@ class GameSpaceApp(ctk.CTk):
         details.grid_columnconfigure(0, weight=1)
         details.grid_rowconfigure(2, weight=1)
 
-        welcome = ctk.CTkLabel(nav, text=f"Signed in as {self.auth_session.email}", wraplength=220, justify="left")
+        mode_prefix = "Signed in as" if not self.guest_mode else "Testing as"
+        welcome = ctk.CTkLabel(nav, text=f"{mode_prefix} {self.auth_session.email}", wraplength=220, justify="left")
         welcome.pack(anchor="w", padx=16, pady=(16, 10))
 
-        nav_help = ctk.CTkLabel(nav, text="Use Up/Down arrows to change pages.", justify="left", wraplength=220)
+        nav_text = "Use Up/Down arrows to change pages."
+        if self.guest_mode:
+            nav_text += " Firebase account tools are hidden in guest tester mode."
+        nav_help = ctk.CTkLabel(nav, text=nav_text, justify="left", wraplength=220)
         nav_help.pack(anchor="w", padx=16, pady=(0, 12))
 
-        for key in MENU_ORDER:
+        for key in self.menu_order:
             title = PAGE_META[key]["title"]
             button = ctk.CTkButton(nav, text=title, anchor="w", command=lambda page=key: self.select_page(page, announce=True))
             button.pack(fill="x", padx=16, pady=4)
@@ -670,6 +687,18 @@ class GameSpaceApp(ctk.CTk):
             return
 
         if kind == "account":
+            if self.guest_mode:
+                info = ctk.CTkLabel(
+                    self.action_frame,
+                    text="Account actions are unavailable in guest tester mode.",
+                    justify="left",
+                    anchor="w",
+                    wraplength=620,
+                )
+                info.pack(fill="x", pady=6)
+                self.action_widgets.append(info)
+                self.action_buttons = []
+                return
             self._add_action_button("Sign Out", self._sign_out, "Activate to sign out and return to login.")
             self._add_action_button("Delete Account", self._delete_account, "Activate to permanently delete your Firebase account.")
             return
@@ -1023,11 +1052,17 @@ class GameSpaceApp(ctk.CTk):
         self.speech.announce(f"Selected winning card: {winning_card}", interrupt=True, force=True)
 
     def _sign_out(self) -> None:
+        if self.guest_mode:
+            self.speech.announce("Guest tester mode has no sign out.", interrupt=True, force=True)
+            return
         self.auth_session = None
         self.speech.announce("Signed out.", interrupt=True, force=True)
         self.show_login()
 
     def _delete_account(self) -> None:
+        if self.guest_mode:
+            self.speech.announce("Guest tester mode has no account to delete.", interrupt=True, force=True)
+            return
         if self.auth_session is None:
             return
         confirmed = messagebox.askyesno(
