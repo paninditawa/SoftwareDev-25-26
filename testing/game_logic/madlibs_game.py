@@ -1,7 +1,20 @@
 import pygame
 import sys
-import win32com.client
 import time
+from pathlib import Path
+
+# Ensure the repo root is on sys.path so `import tts` works when this module is run
+# from the `testing` folder (e.g., via Streamlit launcher).
+_repo_root = Path(__file__).resolve().parents[3]
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
+# Cross-platform TTS helper
+try:
+    from tts import speak as _tts_speak
+except ImportError:
+    def _tts_speak(text: str):
+        print(text)
 
 # =============================================
 # CONFIG
@@ -17,18 +30,19 @@ SELECTED_OPTION_COLOR = (255, 165, 0)
 HIGHLIGHT_COLOR = (255, 200, 0)
 
 # =============================================
-# WINDOWS SAPI TTS
+# TTS (cross-platform)
 # =============================================
-speaker = win32com.client.Dispatch("SAPI.SpVoice")
-speaker.Rate = -2  # Slower speech for accessibility
+# Uses the shared `tts` helper (Windows uses SAPI, macOS uses `say`, other platforms use pyttsx3).
+# If TTS is not available, falls back to printing.
 
 def speak(text):
-    """Async speech (can be interrupted)"""
-    speaker.Speak(text, 3)
+    """Speak text (may be non-blocking depending on backend)."""
+    _tts_speak(text)
+
 
 def speak_block(text):
-    """Blocking speech (cannot be interrupted)"""
-    speaker.Speak(text)
+    """Speak text and wait (backend-dependent behavior)."""
+    _tts_speak(text)
 
 # =============================================
 # MAD LIBS TEMPLATES

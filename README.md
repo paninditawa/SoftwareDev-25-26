@@ -30,6 +30,8 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+> Note: The repo uses `pyttsx3` as a fallback TTS engine. On macOS this may require additional packages like `pyobjc` (pip will usually install what it needs), but if TTS fails you can still use the `say` backend via the `tts` helper.
+
 To run the maze game from the repo root on macOS:
 
 ```bash

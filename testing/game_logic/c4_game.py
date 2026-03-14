@@ -1,8 +1,21 @@
 import pygame
 import numpy as np
 import sys
-import win32com.client
 import time
+from pathlib import Path
+
+# Ensure the repo root is on sys.path so `import tts` works when this module is run
+# from the `testing` folder (e.g., via Streamlit launcher).
+_repo_root = Path(__file__).resolve().parents[3]
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
+# Cross-platform TTS helper
+try:
+    from tts import speak as _tts_speak
+except ImportError:
+    def _tts_speak(text: str):
+        print(text)
 
 # -----------------------------
 # CONFIG
@@ -22,17 +35,17 @@ YELLOW = (255, 255, 0)
 WHITE = (255, 255, 255)
 
 # -----------------------------
-# WINDOWS SAPI TTS (bulletproof)
+# TTS (cross-platform)
 # -----------------------------
-speaker = win32com.client.Dispatch("SAPI.SpVoice")
+# Uses the shared `tts` helper (Windows uses SAPI, macOS uses `say`, other platforms use pyttsx3).
+# If TTS is unavailable, this will print text instead.
 
-# Non-interruptible speech (tutorial)
 def speak_block(text):
-    speaker.Speak(text)  # no flags = blocking, cannot be interrupted
+    _tts_speak(text)
 
-# Interruptible speech (arrow keys, drops, etc.)
+
 def speak(text):
-    speaker.Speak(text, 3)  # async + purge
+    _tts_speak(text)
 
 # -----------------------------
 # GAME LOGIC

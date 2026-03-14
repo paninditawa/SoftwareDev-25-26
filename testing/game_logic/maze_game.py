@@ -1,11 +1,24 @@
 import pygame
-import pythoncom
-import win32com.client
 import threading
 import queue
 import random
 import sys
 import numpy as np
+from pathlib import Path
+
+# Ensure the repo root is on sys.path so `import tts` works even if this module
+# is run from another working directory.
+_repo_root = Path(__file__).resolve().parents[3]
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
+# Use TTS helper (cross-platform) for speech output
+try:
+    from tts import speak as _tts_speak
+except ImportError:
+    def _tts_speak(text: str):
+        # Fallback: print to stdout if tts helper is not available
+        print(text)
 
 # --- Audio constants ---
 SAMPLE_RATE = 44100
@@ -22,7 +35,7 @@ DARK   = (20,   20,  20)
 SCREEN_W, SCREEN_H = 820, 720
 
 # ---------------------------------------------------------------------------
-# Speech engine — uses win32com SAPI directly to avoid pyttsx3/pygame conflicts.
+# Speech engine — cross-platform wrapper around the `tts` helper.
 # ---------------------------------------------------------------------------
 class SpeechEngine:
     def __init__(self):
@@ -31,21 +44,14 @@ class SpeechEngine:
         self._thread.start()
 
     def _worker(self):
-        pythoncom.CoInitialize()
-        try:
-            speaker = win32com.client.Dispatch("SAPI.SpVoice")
-            speaker.Rate = 3
-            speaker.Volume = 100
-            while True:
-                text = self._q.get()
-                if text is None:
-                    break
-                try:
-                    speaker.Speak(text)
-                except Exception as e:
-                    print(f"TTS error: {e}")
-        finally:
-            pythoncom.CoUninitialize()
+        while True:
+            text = self._q.get()
+            if text is None:
+                break
+            try:
+                _tts_speak(text)
+            except Exception as e:
+                print(f"TTS error: {e}")
 
     def speak(self, text, interrupt=False):
         """Queue speech; if interrupt=True, discard pending items first."""
