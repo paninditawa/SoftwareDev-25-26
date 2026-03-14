@@ -3,11 +3,13 @@ import sys
 import time
 from pathlib import Path
 
-# Ensure the repo root is on sys.path so `import tts` works when this module is run
-# from the `testing` folder (e.g., via Streamlit launcher).
-_repo_root = Path(__file__).resolve().parents[3]
-if str(_repo_root) not in sys.path:
-    sys.path.insert(0, str(_repo_root))
+# Ensure the project root containing `tts.py` is on sys.path.
+_this_file = Path(__file__).resolve()
+for _parent in _this_file.parents:
+    if (_parent / "tts.py").exists():
+        if str(_parent) not in sys.path:
+            sys.path.insert(0, str(_parent))
+        break
 
 # Cross-platform TTS helper
 try:

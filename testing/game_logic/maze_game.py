@@ -6,11 +6,13 @@ import sys
 import numpy as np
 from pathlib import Path
 
-# Ensure the repo root is on sys.path so `import tts` works even if this module
-# is run from another working directory.
-_repo_root = Path(__file__).resolve().parents[3]
-if str(_repo_root) not in sys.path:
-    sys.path.insert(0, str(_repo_root))
+# Ensure the project root containing `tts.py` is on sys.path.
+_this_file = Path(__file__).resolve()
+for _parent in _this_file.parents:
+    if (_parent / "tts.py").exists():
+        if str(_parent) not in sys.path:
+            sys.path.insert(0, str(_parent))
+        break
 
 # Use TTS helper (cross-platform) for speech output
 try:

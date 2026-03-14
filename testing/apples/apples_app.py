@@ -5,9 +5,15 @@ import secrets
 import json
 import random
 import streamlit as st
-from streamlit_autorefresh import st_autorefresh
 import os
 import html
+
+try:
+    from streamlit_autorefresh import st_autorefresh
+except ImportError:
+    def st_autorefresh(*args, **kwargs):
+        # Fallback keeps the app runnable even if optional dependency is missing.
+        return None
 
 data = os.path.join(os.path.dirname(__file__), "apples_min.db")
 hand_size = 10
