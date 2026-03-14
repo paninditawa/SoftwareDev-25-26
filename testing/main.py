@@ -7,6 +7,7 @@ import maze_app
 import madlibs_app
 import home_page
 import c4_app
+import hangman
 
 st.title("Accessible Game Space")
 
@@ -18,6 +19,9 @@ st.sidebar.title("Navigation")
 
 if st.sidebar.button("Home"):
     st.session_state.page = "home_page"
+
+if st.sidebar.button("Hangman"):
+    st.session_state.page = "hangman"
 
 if st.sidebar.button("Maze Game"):
     st.session_state.page = "maze_app"
@@ -109,3 +113,6 @@ elif st.session_state.page == "battleship":
             )
         else:
             st.error("Start the Battleship server first before launching the client.")
+
+elif st.session_state.page == "hangman":
+    hangman.show_hangman()
