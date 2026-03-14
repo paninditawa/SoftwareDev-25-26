@@ -21,6 +21,24 @@ class AuthSession:
     local_id: str
 
 
+def _is_usable_api_key(value: str | None) -> bool:
+    if not value:
+        return False
+    normalized = value.strip()
+    if not normalized:
+        return False
+    placeholders = (
+        "REPLACE_WITH_FIREBASE_WEB_API_KEY",
+        "YOUR_FIREBASE_WEB_API_KEY",
+        "YOUR_API_KEY",
+    )
+    if normalized in placeholders:
+        return False
+    if normalized.startswith("<") and normalized.endswith(">"):
+        return False
+    return True
+
+
 def _map_error(message: str) -> str:
     known = {
         "EMAIL_EXISTS": "That email is already registered.",
@@ -42,8 +60,8 @@ class FirebaseAuthClient:
     @classmethod
     def from_workspace(cls, workspace_root: Path) -> "FirebaseAuthClient":
         api_key = os.environ.get("FIREBASE_API_KEY")
-        if api_key:
-            return cls(api_key)
+        if _is_usable_api_key(api_key):
+            return cls(api_key.strip())
 
         executable_dir = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else None
         current_dir = Path.cwd()
@@ -70,18 +88,18 @@ class FirebaseAuthClient:
                 if secret_file.exists():
                     data = tomllib.loads(secret_file.read_text(encoding="utf-8"))
                     api_key = data.get("firebase_api_key")
-                    if api_key:
-                        return cls(api_key)
+                    if _is_usable_api_key(api_key):
+                        return cls(api_key.strip())
             except Exception:
                 continue
 
         return cls(None)
 
     def is_configured(self) -> bool:
-        return bool(self.api_key)
+        return _is_usable_api_key(self.api_key)
 
     def _request(self, endpoint: str, payload: dict) -> dict:
-        if not self.api_key:
+        if not self.is_configured():
             raise FirebaseAuthError(_map_error("MISSING_FIREBASE_API_KEY"))
 
         url = f"https://identitytoolkit.googleapis.com/v1/{endpoint}?key={self.api_key}"

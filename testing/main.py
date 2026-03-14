@@ -51,6 +51,24 @@ PAGE_LABEL_TO_KEY = {label: key for label, key in PAGE_OPTIONS}
 PAGE_KEY_TO_LABEL = {key: label for label, key in PAGE_OPTIONS}
 
 
+def _is_usable_api_key(value: str | None) -> bool:
+    if not value:
+        return False
+    normalized = value.strip()
+    if not normalized:
+        return False
+    placeholders = {
+        "REPLACE_WITH_FIREBASE_WEB_API_KEY",
+        "YOUR_FIREBASE_WEB_API_KEY",
+        "YOUR_API_KEY",
+    }
+    if normalized in placeholders:
+        return False
+    if normalized.startswith("<") and normalized.endswith(">"):
+        return False
+    return True
+
+
 def _announce(text: str, interrupt: bool = True, force: bool = False) -> None:
     """Speak and log an announcement for built-in accessibility narration."""
     if not st.session_state.get("voice_enabled", True):
@@ -253,13 +271,15 @@ def _get_firebase_api_key() -> str | None:
     """Resolve Firebase API key from Streamlit secrets or environment."""
     try:
         if "firebase_api_key" in st.secrets:
-            return st.secrets["firebase_api_key"]
+            key = st.secrets["firebase_api_key"]
+            if _is_usable_api_key(key):
+                return key.strip()
     except Exception:
         pass
 
     env_key = os.environ.get("FIREBASE_API_KEY")
-    if env_key:
-        return env_key
+    if _is_usable_api_key(env_key):
+        return env_key.strip()
 
     # Fallback for local runs where Streamlit may be started from `testing/`.
     candidate_files = [
@@ -271,8 +291,8 @@ def _get_firebase_api_key() -> str | None:
             if secret_file.exists():
                 data = tomllib.loads(secret_file.read_text(encoding="utf-8"))
                 key = data.get("firebase_api_key")
-                if key:
-                    return key
+                if _is_usable_api_key(key):
+                    return key.strip()
         except Exception:
             continue
 
