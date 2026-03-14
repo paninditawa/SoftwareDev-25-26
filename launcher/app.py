@@ -98,6 +98,8 @@ class GameSpaceApp(ctk.CTk):
         self.nav_buttons: dict[str, ctk.CTkButton] = {}
         self.action_widgets: list[tk.Widget] = []
         self.action_buttons: list[ctk.CTkButton] = []
+        self.login_action_buttons: list[ctk.CTkButton] = []
+        self.login_action_index = 0
 
         self.status_var = tk.StringVar(value="Ready.")
         self.email_var = tk.StringVar()
@@ -164,6 +166,8 @@ class GameSpaceApp(ctk.CTk):
         self.nav_buttons = {}
         self.action_widgets = []
         self.action_buttons = []
+        self.login_action_buttons = []
+        self.login_action_index = 0
         self.action_index = 0
         self.nav_mode = True
 
@@ -181,6 +185,7 @@ class GameSpaceApp(ctk.CTk):
         self.bind_all("<Right>", self._handle_right, add="+")
         self.bind_all("<Tab>", self._handle_tab_mode_toggle, add="+")
         self.bind_all("<Return>", self._handle_activate, add="+")
+        self.bind_all("<KP_Enter>", self._handle_activate, add="+")
         self.bind_all("<space>", self._handle_activate, add="+")
 
     def _handle_help(self, _event=None):
@@ -248,8 +253,13 @@ class GameSpaceApp(ctk.CTk):
     def _handle_activate(self, _event=None):
         if self.current_screen == "menu":
             if self.nav_mode:
-                # Enter on a page selects that page and moves to first action.
-                if self.action_buttons:
+                # On pages with a single primary action, Enter activates it directly.
+                # Use Right Arrow to enter explicit action mode on multi-action pages.
+                if len(self.action_buttons) == 1:
+                    self.action_buttons[0].invoke()
+                    self.nav_mode = True
+                    self._sync_keyboard_focus()
+                elif self.action_buttons:
                     self.nav_mode = False
                     self.action_index = 0
                     self._sync_keyboard_focus()
@@ -262,13 +272,30 @@ class GameSpaceApp(ctk.CTk):
                 return "break"
             return "break"
 
+        if self.current_screen == "login":
+            widget = self.focus_get()
+            if hasattr(widget, "invoke") and not self._is_text_entry(widget):
+                widget.invoke()
+                return "break"
+            if self.login_action_buttons:
+                self.login_action_buttons[self.login_action_index].invoke()
+                return "break"
+            return "break"
+
+        # Generic fallback for any future screen with invokable focused controls.
         widget = self.focus_get()
-        if hasattr(widget, "invoke"):
+        if hasattr(widget, "invoke") and not self._is_text_entry(widget):
             widget.invoke()
             return "break"
+
         return None
 
     def _handle_vertical(self, delta: int):
+        if self.current_screen == "login":
+            if self._is_text_entry(self.focus_get()):
+                return None
+            return self._move_login_action_selection(delta)
+
         if self.current_screen != "menu":
             return None
         if self._is_text_entry(self.focus_get()):
@@ -304,10 +331,49 @@ class GameSpaceApp(ctk.CTk):
         if not self.action_buttons:
             self.speech.announce("No action buttons on this page.", interrupt=True, force=True)
             return "break"
+        if len(self.action_buttons) <= 1:
+            # Prevent keyboard trap on single-action pages (e.g., Hangman launch).
+            self.nav_mode = True
+            return self._move_menu_selection(delta)
         self.action_index = (self.action_index + delta) % len(self.action_buttons)
         self.nav_mode = False
         self._sync_keyboard_focus()
         return "break"
+
+    def _move_login_action_selection(self, delta: int):
+        if not self.login_action_buttons:
+            return "break"
+        self.login_action_index = (self.login_action_index + delta) % len(self.login_action_buttons)
+        self._sync_login_focus()
+        return "break"
+
+    def _register_login_button(self, button: ctk.CTkButton, label: str, hint: str) -> None:
+        self.speech.bind_focus(button, label, hint)
+        self.login_action_buttons.append(button)
+
+        def _on_focus(_event=None):
+            try:
+                self.login_action_index = self.login_action_buttons.index(button)
+            except ValueError:
+                return
+            self._style_login_buttons()
+
+        button.bind("<FocusIn>", _on_focus, add="+")
+
+    def _style_login_buttons(self) -> None:
+        for index, button in enumerate(self.login_action_buttons):
+            if index == self.login_action_index:
+                button.configure(border_width=2, border_color="#f2b134")
+            else:
+                button.configure(border_width=0)
+
+    def _sync_login_focus(self) -> None:
+        if self.current_screen != "login" or not self.login_action_buttons:
+            return
+        self._style_login_buttons()
+        button = self.login_action_buttons[self.login_action_index]
+        button.focus_set()
+        self.speech.set_focus(button.cget("text"), "Press Enter to activate.")
 
     def _style_nav_button(self, key: str, button: ctk.CTkButton) -> None:
         selected = key == self.current_page_key
@@ -426,17 +492,22 @@ class GameSpaceApp(ctk.CTk):
 
         sign_in_button = ctk.CTkButton(button_row, text="Sign In", command=self._sign_in)
         sign_in_button.grid(row=0, column=0, padx=(0, 8), sticky="ew")
-        self.speech.bind_focus(sign_in_button, "Sign In button", "Activate to sign in with the entered email and password.")
+        self._register_login_button(sign_in_button, "Sign In button", "Activate to sign in with the entered email and password.")
 
         create_button = ctk.CTkButton(button_row, text="Create Account", command=self._sign_up)
         create_button.grid(row=0, column=1, padx=(8, 0), sticky="ew")
-        self.speech.bind_focus(create_button, "Create Account button", "Activate to create a new Firebase account.")
+        self._register_login_button(create_button, "Create Account button", "Activate to create a new Firebase account.")
 
         help_button = ctk.CTkButton(card, text="Read Login Help", command=self._handle_help)
         help_button.pack(padx=24, pady=(0, 24), fill="x")
-        self.speech.bind_focus(help_button, "Read Login Help button", "Activate to hear login instructions again.")
+        self._register_login_button(help_button, "Read Login Help button", "Activate to hear login instructions again.")
+
+        # Enter from fields should work for fast keyboard-only login flow.
+        email_entry.bind("<Return>", lambda _event: self._sign_in(), add="+")
+        password_entry.bind("<Return>", lambda _event: self._sign_in(), add="+")
 
         self.after(150, email_entry.focus_set)
+        self.after(250, self._style_login_buttons)
         self.speech.set_screen(
             "Login screen",
             "Enter email and password, then choose Sign In or Create Account.",
@@ -547,6 +618,8 @@ class GameSpaceApp(ctk.CTk):
         for child in self.action_frame.winfo_children():
             child.destroy()
         self.action_widgets = []
+        self.action_buttons = []
+        self.action_index = 0
 
     def _add_action_button(self, text: str, command, hint: str) -> ctk.CTkButton:
         button = ctk.CTkButton(self.action_frame, text=text, command=command)

@@ -1,0 +1,26 @@
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Local secrets
+.streamlit/secrets.toml
+testing/.streamlit/secrets.toml
+
+# Packaging output
+build/
+dist/
+
+# IDE/system files
+.vscode/
+.DS_Store
+Thumbs.db
