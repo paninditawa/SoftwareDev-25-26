@@ -201,7 +201,7 @@ class GameSpaceApp(ctk.CTk):
 
     def _bind_tab_aliases(self, widget: tk.Widget) -> None:
         widget.bind("<Shift-Tab>", lambda event: self._handle_vertical(-1), add="+")
-        widget.bind("<ISO_Left_Tab>", lambda event: self._handle_vertical(-1), add="+")
+        #widget.bind("<Shift-Tab>", lambda event: self._handle_vertical(-1), add="+")
         widget.bind("<Tab>", lambda event: self._handle_vertical(1), add="+")
 
     def _handle_help(self, _event=None):
