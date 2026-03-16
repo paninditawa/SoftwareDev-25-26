@@ -70,7 +70,7 @@ class HangmanGame:
 
         pygame.init()
 
-        self.win = pygame.display.set_mode((WIDTH, HEIGHT))
+        self.win = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN | pygame.SCALED)
         pygame.display.set_caption("Hangman")
         
 
@@ -83,6 +83,7 @@ class HangmanGame:
         self.state = "menu"
 
         self.letters = []
+        self.selected_index = 0
         self.create_buttons()
 
         self.reset_game()
@@ -105,6 +106,7 @@ class HangmanGame:
         self.guessed = []
         self.hangman = 0
         self.start_time = time.time()
+        self.selected_index = 0
 
         for letter in self.letters:
             letter[3] = True
@@ -153,8 +155,7 @@ class HangmanGame:
         title = self.title_font.render("Hangman",1,TEXT_COLOR)
         self.win.blit(title,(WIDTH/2 - title.get_width()/2,200))
 
-        text = self.word_font.render("Press SPACE to Start",1,TEXT_COLOR)
-        self.speak("Press SPACE to Start")
+        text = self.word_font.render("Press SPACE or ENTER to Start",1,TEXT_COLOR)
         self.win.blit(text,(WIDTH/2 - text.get_width()/2,350))
 
         pygame.display.update()
@@ -180,12 +181,14 @@ class HangmanGame:
         self.win.blit(text,(500,250))
 
 
-        for letter in self.letters:
+        for i, letter in enumerate(self.letters):
 
             x,y,ltr,visible = letter
 
             if visible:
 
+                if i == self.selected_index:
+                    pygame.draw.circle(self.win, (255, 165, 0), (x,y), RADIUS)
                 pygame.draw.circle(self.win, TEXT_COLOR, (x,y), RADIUS, 3)
 
                 txt = self.font.render(ltr,1,TEXT_COLOR)
@@ -215,25 +218,48 @@ class HangmanGame:
 
     def handle_game_input(self,event):
 
-        if event.type == pygame.MOUSEBUTTONDOWN:
+        if event.type != pygame.KEYDOWN:
+            return
 
-            x_mouse,y_mouse = pygame.mouse.get_pos()
+        if event.key == pygame.K_LEFT:
+            for _ in range(26):
+                self.selected_index = (self.selected_index - 1) % 26
+                if self.letters[self.selected_index][3]:
+                    break
+            self.speak(self.letters[self.selected_index][2])
 
-            for letter in self.letters:
+        elif event.key == pygame.K_RIGHT:
+            for _ in range(26):
+                self.selected_index = (self.selected_index + 1) % 26
+                if self.letters[self.selected_index][3]:
+                    break
+            self.speak(self.letters[self.selected_index][2])
 
-                x,y,ltr,visible = letter
+        elif event.key == pygame.K_UP:
+            for _ in range(26):
+                self.selected_index = (self.selected_index - 13) % 26
+                if self.letters[self.selected_index][3]:
+                    break
+            self.speak(self.letters[self.selected_index][2])
 
-                if visible:
+        elif event.key == pygame.K_DOWN:
+            for _ in range(26):
+                self.selected_index = (self.selected_index + 13) % 26
+                if self.letters[self.selected_index][3]:
+                    break
+            self.speak(self.letters[self.selected_index][2])
 
-                    dist = math.sqrt((x-x_mouse)**2 + (y-y_mouse)**2)
-
-                    if dist <= RADIUS:
-
-                        letter[3] = False
-                        self.guessed.append(ltr)
-
-                        if ltr not in self.word:
-                            self.hangman += 1
+        elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
+            letter = self.letters[self.selected_index]
+            if letter[3]:
+                letter[3] = False
+                ltr = letter[2]
+                self.guessed.append(ltr)
+                if ltr in self.word:
+                    self.speak(f"{ltr} is in the word!")
+                else:
+                    self.hangman += 1
+                    self.speak(f"{ltr} is not in the word.")
 
     def check_game_over(self):
 
@@ -262,6 +288,11 @@ class HangmanGame:
             for event in pygame.event.get():
 
                 if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    self.speak("Exiting Hangman.")
                     pygame.quit()
                     sys.exit()
 

@@ -3,6 +3,30 @@ import pygame
 import sys
 import random
 import math
+import time
+from pathlib import Path
+
+# import PyAudio as pyaudio
+# import speech_recognition as sr
+
+# # Initialize recognizer
+# r = sr.Recognizer()
+
+# # Use the default microphone as the audio source
+# with sr.Microphone() as source:
+#     print("Listening... please speak now.")
+#     r.adjust_for_ambient_noise(source)  # Optional: reduce background noise
+#     audio = r.listen(source)  # Capture the audio
+
+# try:
+#     # Recognize speech using Google Web Speech API
+#     text = r.recognize_google(audio)
+#     print("You said:", text)
+# except sr.UnknownValueError:
+#     print("Sorry, could not understand what you said.")
+# except sr.RequestError as e:
+#     print(f"Could not request results; check your internet connection. Error: {e}")
+
 
 WIDTH = 1000
 HEIGHT = 700
@@ -13,6 +37,33 @@ RADIUS = 24
 SPACE = 20
 WORDS = ["HANNAH","ANINDITA","SIA","ANISHA","ZIXUAN","SOFTWARE","DEVELOPMENT"]
 
+# Ensure the project root containing `tts.py` is on sys.path.
+_this_file = Path(__file__).resolve()
+for _parent in _this_file.parents:
+    if (_parent / "tts.py").exists():
+        if str(_parent) not in sys.path:
+            sys.path.insert(0, str(_parent))
+        break
+
+# Use TTS helper (cross-platform) for speech output
+try:
+    from tts import speak as _tts_speak
+except ImportError:
+    def _tts_speak(text: str):
+        # Fallback: print to stdout if tts helper is not available
+        print(text)
+
+# --- Audio constants ---
+SAMPLE_RATE = 44100
+def speak(text):
+    """Speak text (may be non-blocking depending on backend)."""
+    _tts_speak(text)
+
+
+def speak_block(text):
+    """Speak text and wait (backend-dependent behavior)."""
+    _tts_speak(text)
+
 class HangmanGame:
 
     def __init__(self):
@@ -21,6 +72,7 @@ class HangmanGame:
 
         self.win = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("Hangman")
+        
 
         self.clock = pygame.time.Clock()
 
@@ -34,15 +86,29 @@ class HangmanGame:
         self.create_buttons()
 
         self.reset_game()
+        self.speak("Welcome to Hangman! Your goal is to guess a word letter by letter. Start by saying any letter!")
+
+    def speak(self, text):
+        speak(text)
+
+    def speak_block(self, text):
+        speak_block(text)
+
+    def _elapsed_text(self):
+        elapsed = max(0, int(time.time() - self.start_time))
+        minutes, seconds = divmod(elapsed, 60)
+        return f"{minutes} minutes and {seconds} seconds"
 
     def reset_game(self):
 
         self.word = random.choice(WORDS)
         self.guessed = []
         self.hangman = 0
+        self.start_time = time.time()
 
         for letter in self.letters:
             letter[3] = True
+        self.speak_block(f"The word has {len(self.word)} letters!")
 
 
     def create_buttons(self):
@@ -88,6 +154,7 @@ class HangmanGame:
         self.win.blit(title,(WIDTH/2 - title.get_width()/2,200))
 
         text = self.word_font.render("Press SPACE to Start",1,TEXT_COLOR)
+        self.speak("Press SPACE to Start")
         self.win.blit(text,(WIDTH/2 - text.get_width()/2,350))
 
         pygame.display.update()
@@ -135,8 +202,10 @@ class HangmanGame:
 
         if self.result == "win":
             msg = "YOU WON!"
+            self.speak(f"You won! It took you {self._elapsed_text()}")
         else:
             msg = f"YOU LOST! Word was {self.word}"
+            self.speak(f"You lost. The word was {self.word}. It took you {self._elapsed_text()}")
 
         text = self.title_font.render(msg,1,TEXT_COLOR)
 

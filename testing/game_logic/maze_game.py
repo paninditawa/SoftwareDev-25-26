@@ -158,7 +158,7 @@ class SizeSelectScreen:
             self.speech.speak(
                 f"Starting a {self.size} by {self.size} maze. "
                 "Navigate from the top left corner to the bottom right corner. "
-                "Use arrow keys or W A S D to move. "
+                "Use arrow keys to move. "
                 "Press SPACE at any time to hear which directions are open or blocked. "
                 "Good luck!",
                 interrupt=True
@@ -184,10 +184,12 @@ class SizeSelectScreen:
             "ENTER      — start game",
             "",
             "In game:",
-            "ARROWS / WASD  — move",
-            "SPACE          — scan directions (tones + speech)",
-            "R              — new maze (same size)",
-            "ESC            — return to this menu",
+            "ARROWS     — move",
+            "SPACE      — scan directions (tones + speech)",
+            "",
+            "On win screen:",
+            "ENTER      — new maze (same size)",
+            "SPACE      — return to this menu",
         ]
         for i, line in enumerate(lines):
             surf = self.small.render(line, True, WHITE if line else DARK)
@@ -200,10 +202,10 @@ class SizeSelectScreen:
 # ---------------------------------------------------------------------------
 class MazeGame:
     DIRS = [
-        ("Top",    0, -1, pygame.K_UP,    pygame.K_w),
-        ("Bottom", 0,  1, pygame.K_DOWN,  pygame.K_s),
-        ("Left",  -1,  0, pygame.K_LEFT,  pygame.K_a),
-        ("Right",  1,  0, pygame.K_RIGHT, pygame.K_d),
+        ("Top",    0, -1, pygame.K_UP),
+        ("Bottom", 0,  1, pygame.K_DOWN),
+        ("Left",  -1,  0, pygame.K_LEFT),
+        ("Right",  1,  0, pygame.K_RIGHT),
     ]
 
     def __init__(self, screen, speech, cols, rows):
@@ -276,17 +278,17 @@ class MazeGame:
             return None
 
         if self.won:
-            if event.key == pygame.K_r:
+            if event.key == pygame.K_RETURN:
                 self.reset()
-            elif event.key == pygame.K_ESCAPE:
+            elif event.key == pygame.K_SPACE:
                 return "menu"
             return None
 
         c, r = self.player
 
         # Directional movement
-        for name, dc, dr, k1, k2 in self.DIRS:
-            if event.key in (k1, k2):
+        for name, dc, dr, k1 in self.DIRS:
+            if event.key == k1:
                 nc, nr = c + dc, r + dr
                 in_bounds = 0 <= nc < self.cols and 0 <= nr < self.rows
                 if in_bounds and can_move(self.passages, c, r, nc, nr):
@@ -298,7 +300,7 @@ class MazeGame:
                         self.snd_win.play()
                         self.speech.speak(
                             f"Congratulations! You reached the exit in {self.moves} move{'s' if self.moves != 1 else ''}! "
-                            "Press R to play again or ESCAPE for the main menu.",
+                            "Press Enter for a new maze or Space to return to the menu.",
                             interrupt=True
                         )
                 else:
@@ -307,10 +309,6 @@ class MazeGame:
 
         if event.key == pygame.K_SPACE:
             self._announce_position()
-        elif event.key == pygame.K_r:
-            self.reset()
-        elif event.key == pygame.K_ESCAPE:
-            return "menu"
 
         return None
 
@@ -363,7 +361,7 @@ class MazeGame:
 
         # HUD top
         hud = self.small.render(
-            "ARROWS/WASD=move   SPACE=scan directions   R=new maze   ESC=menu",
+            "ARROWS=move   SPACE=scan directions   (win: ENTER=new maze   SPACE=menu)",
             True, GRAY
         )
         self.screen.blit(hud, (SCREEN_W//2 - hud.get_width()//2, 10))
@@ -383,7 +381,7 @@ class MazeGame:
             overlay.fill((0, 0, 0, 200))
             self.screen.blit(overlay, (0, SCREEN_H//2 - 45))
             win = self.big.render(
-                f"YOU WIN!  {self.moves} moves   R=Restart   ESC=Menu", True, YELLOW
+                f"YOU WIN!  {self.moves} moves   ENTER=new maze   SPACE=menu", True, YELLOW
             )
             self.screen.blit(win, (SCREEN_W//2 - win.get_width()//2, SCREEN_H//2 - 22))
 
@@ -395,7 +393,7 @@ class MazeGame:
 def main():
     pygame.init()
     pygame.mixer.init(frequency=SAMPLE_RATE, size=-16, channels=2, buffer=512)
-    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.FULLSCREEN | pygame.SCALED)
     pygame.display.set_caption("Accessible Maze Game")
 
     speech   = SpeechEngine()
@@ -407,6 +405,12 @@ def main():
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                speech.stop()
+                pygame.quit()
+                sys.exit()
+
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                speech.speak("Exiting Maze Game.", interrupt=True)
                 speech.stop()
                 pygame.quit()
                 sys.exit()

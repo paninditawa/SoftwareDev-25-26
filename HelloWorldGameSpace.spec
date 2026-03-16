@@ -10,7 +10,6 @@ datas = [
     (str(project_root / "testing" / "Battleship"), "testing/Battleship"),
     (str(project_root / "testing" / "apples" / "apples_min.db"), "testing/apples"),
     (str(project_root / "tts.py"), "."),
-    (str(project_root / ".streamlit" / "secrets.toml.example"), ".streamlit"),
 ]
 
 hiddenimports = [
@@ -35,7 +34,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["streamlit"],
+    excludes=[],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

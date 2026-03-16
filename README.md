@@ -1,8 +1,10 @@
 # HelloWorld GameSpace
 
-Accessible collection of mini-games with a desktop-first launcher, optional Firebase login, and built-in voice announcements.
+Accessible collection of mini-games with a desktop-first launcher, account sign-in, and spoken announcements.
 
 New contributors can follow the short setup guide in `CONTRIBUTING.md`.
+
+Keyboard controls: Up/Down arrows (or Shift+Tab/Tab) to navigate, Left/Right arrows to switch between menus and actions, Enter or Space to activate.
 
 ## Quick Start (Windows PowerShell)
 
@@ -15,11 +17,9 @@ python -m pip install -r requirements.txt
 python launch_gamespace.py
 ```
 
-Firebase key is optional for testers. If no key is set, the launcher starts in Guest Tester mode.
+Sign-in is ready to use out of the box. Just clone, install, and run.
 
-## Recommended: Desktop Launcher
-
-The main way to run this project is the desktop app launcher.
+## Run The Launcher
 
 ### 1) Clone and enter the repo
 
@@ -55,48 +55,37 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-### 5) Optional: Configure Firebase API key (owner mode)
-
-Most users can skip this. Configure Firebase only if you want sign in/sign up/delete account features.
-
-Choose one option:
-
-Option A: environment variable
-
-```powershell
-$env:FIREBASE_API_KEY="YOUR_FIREBASE_WEB_API_KEY"
-```
-
-```bash
-export FIREBASE_API_KEY="YOUR_FIREBASE_WEB_API_KEY"
-```
-
-Option B: local secrets file (do not commit)
-
-```toml
-firebase_api_key = "YOUR_FIREBASE_WEB_API_KEY"
-```
-
-Place that file at either of these paths:
-
-- .streamlit/secrets.toml
-- testing/.streamlit/secrets.toml
-
-### 6) Run the desktop app
+### 5) Run the desktop app
 
 ```bash
 python launch_gamespace.py
 ```
 
-## Desktop Features
+## Features
 
 - Keyboard-first navigation.
-- Built-in spoken focus/context announcements.
-- Guest Tester mode when Firebase is not configured.
-- Firebase account sign-in/sign-up/delete account when configured.
+- Spoken focus/context announcements.
+- Account sign-in, sign-up, and sign-out.
 - Launch support for Hangman, Maze, Mad Libs, Escape Room, Connect 4, Apples to Apples, and Battleship.
 
-## Build Windows Executable (Optional)
+## Troubleshooting Quick Notes
+
+- If sign-in fails, make sure you have an internet connection and try again.
+- If PowerShell blocks activation, run:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+- If pygame fails on macOS, install SDL packages:
+
+```bash
+brew install sdl2 sdl2_image sdl2_mixer sdl2_ttf pkg-config
+```
+
+## Build Windows Executable (Optional, Last Step)
+
+Use this only for demos, judging, or sharing with non-coders.
 
 From repo root in PowerShell:
 
@@ -112,29 +101,3 @@ Run:
 
 - dist/HelloWorldGameSpace/HelloWorldGameSpace.exe
 
-## Troubleshooting Quick Notes
-
-- If you do not configure Firebase, the app runs in Guest Tester mode automatically.
-- If you want account features, set FIREBASE_API_KEY or create one of the secrets files listed above.
-- If PowerShell blocks activation, run:
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-```
-
-- If pygame fails on macOS, install SDL packages:
-
-```bash
-brew install sdl2 sdl2_image sdl2_mixer sdl2_ttf pkg-config
-```
-
-## Streamlit Launcher (Legacy / Optional)
-
-Streamlit still works for compatibility/testing, but the desktop launcher is the primary experience.
-
-From repo root:
-
-```bash
-cd testing
-streamlit run main.py
-```

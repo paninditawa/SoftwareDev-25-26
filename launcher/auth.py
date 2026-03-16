@@ -1,15 +1,15 @@
 from __future__ import annotations
 
+import importlib.util
 import os
 import sys
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
 import requests
 
 
-class FirebaseAuthError(Exception):
+class AuthError(Exception):
     pass
 
 
@@ -19,124 +19,180 @@ class AuthSession:
     id_token: str
     refresh_token: str
     local_id: str
+    username: str | None = None
 
 
-def _is_usable_api_key(value: str | None) -> bool:
+def _extract_username(user: dict | None) -> str | None:
+    if not isinstance(user, dict):
+        return None
+    metadata = user.get("user_metadata")
+    if isinstance(metadata, dict):
+        for key in ("username", "display_name", "name"):
+            value = metadata.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return None
+
+
+def _load_value_from_python_config(config_file: Path, keys: tuple[str, ...]) -> str | None:
+    if not config_file.exists():
+        return None
+    try:
+        spec = importlib.util.spec_from_file_location("local_auth_config", str(config_file))
+        if spec is None or spec.loader is None:
+            return None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception:
+        return None
+
+    for key_name in keys:
+        value = getattr(module, key_name, None)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _is_usable_url(value: str | None) -> bool:
     if not value:
         return False
     normalized = value.strip()
     if not normalized:
         return False
     placeholders = (
-        "REPLACE_WITH_FIREBASE_WEB_API_KEY",
-        "YOUR_FIREBASE_WEB_API_KEY",
-        "YOUR_API_KEY",
+        "REPLACE_WITH_SUPABASE_URL",
+        "YOUR_SUPABASE_URL",
+        "https://YOUR-PROJECT-REF.supabase.co",
     )
     if normalized in placeholders:
         return False
-    if normalized.startswith("<") and normalized.endswith(">"):
+    return normalized.startswith("http://") or normalized.startswith("https://")
+
+
+def _is_usable_supabase_key(value: str | None) -> bool:
+    if not value:
         return False
-    return True
+    normalized = value.strip()
+    if not normalized:
+        return False
+    placeholders = (
+        "REPLACE_WITH_SUPABASE_ANON_KEY",
+        "YOUR_SUPABASE_ANON_KEY",
+    )
+    return normalized not in placeholders
 
 
-def _map_error(message: str) -> str:
-    known = {
-        "EMAIL_EXISTS": "That email is already registered.",
-        "EMAIL_NOT_FOUND": "No account found for that email.",
-        "INVALID_PASSWORD": "Incorrect password.",
-        "USER_DISABLED": "This account has been disabled.",
-        "INVALID_EMAIL": "Please enter a valid email address.",
-        "CREDENTIAL_TOO_OLD_LOGIN_AGAIN": "Please sign in again before deleting your account.",
-        "TOO_MANY_ATTEMPTS_TRY_LATER": "Too many attempts. Try again later.",
-        "MISSING_FIREBASE_API_KEY": "Firebase API key is missing.",
-    }
-    return known.get(message, f"Authentication failed: {message}")
-
-
-class FirebaseAuthClient:
-    def __init__(self, api_key: str | None) -> None:
-        self.api_key = api_key
+class AuthClient:
+    def __init__(self, supabase_url: str | None, supabase_anon_key: str | None) -> None:
+        self.supabase_url = supabase_url.rstrip("/") if isinstance(supabase_url, str) else None
+        self.supabase_anon_key = supabase_anon_key.strip() if isinstance(supabase_anon_key, str) else None
 
     @classmethod
-    def from_workspace(cls, workspace_root: Path) -> "FirebaseAuthClient":
-        api_key = os.environ.get("FIREBASE_API_KEY")
-        if _is_usable_api_key(api_key):
-            return cls(api_key.strip())
+    def from_workspace(cls, workspace_root: Path) -> "AuthClient":
+        supabase_url = os.environ.get("SUPABASE_URL")
+        supabase_anon_key = os.environ.get("SUPABASE_ANON_KEY")
+        if _is_usable_url(supabase_url) and _is_usable_supabase_key(supabase_anon_key):
+            return cls(supabase_url.strip(), supabase_anon_key.strip())
 
         executable_dir = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else None
         current_dir = Path.cwd()
 
-        candidate_files = [
-            workspace_root / ".streamlit" / "secrets.toml",
-            workspace_root / "testing" / ".streamlit" / "secrets.toml",
+        candidate_configs = [
+            workspace_root / "supabase_project.py",
+            workspace_root / "launcher" / "supabase_project.py",
         ]
         if executable_dir is not None:
-            candidate_files.extend(
+            candidate_configs.extend(
                 [
-                    executable_dir / ".streamlit" / "secrets.toml",
-                    executable_dir / "testing" / ".streamlit" / "secrets.toml",
+                    executable_dir / "supabase_project.py",
+                    executable_dir / "launcher" / "supabase_project.py",
                 ]
             )
-        candidate_files.extend(
+        candidate_configs.extend(
             [
-                current_dir / ".streamlit" / "secrets.toml",
-                current_dir / "testing" / ".streamlit" / "secrets.toml",
+                current_dir / "supabase_project.py",
+                current_dir / "launcher" / "supabase_project.py",
             ]
         )
-        for secret_file in candidate_files:
-            try:
-                if secret_file.exists():
-                    data = tomllib.loads(secret_file.read_text(encoding="utf-8"))
-                    api_key = data.get("firebase_api_key")
-                    if _is_usable_api_key(api_key):
-                        return cls(api_key.strip())
-            except Exception:
-                continue
 
-        return cls(None)
+        for config_file in candidate_configs:
+            supabase_url = _load_value_from_python_config(config_file, ("SUPABASE_URL", "supabase_url"))
+            supabase_anon_key = _load_value_from_python_config(config_file, ("SUPABASE_ANON_KEY", "supabase_anon_key"))
+            if _is_usable_url(supabase_url) and _is_usable_supabase_key(supabase_anon_key):
+                return cls(supabase_url, supabase_anon_key)
+
+        return cls(None, None)
 
     def is_configured(self) -> bool:
-        return _is_usable_api_key(self.api_key)
+        return _is_usable_url(self.supabase_url) and _is_usable_supabase_key(self.supabase_anon_key)
 
-    def _request(self, endpoint: str, payload: dict) -> dict:
+    def _request(self, method: str, path: str, payload: dict | None = None, user_token: str | None = None) -> dict:
         if not self.is_configured():
-            raise FirebaseAuthError(_map_error("MISSING_FIREBASE_API_KEY"))
+            raise AuthError("Supabase auth is not configured.")
 
-        url = f"https://identitytoolkit.googleapis.com/v1/{endpoint}?key={self.api_key}"
+        auth_token = user_token.strip() if isinstance(user_token, str) and user_token.strip() else self.supabase_anon_key
+        headers = {
+            "apikey": self.supabase_anon_key,
+            "Authorization": f"Bearer {auth_token}",
+            "Content-Type": "application/json",
+        }
+        url = f"{self.supabase_url}{path}"
         try:
-            response = requests.post(url, json=payload, timeout=15)
-            data = response.json()
+            response = requests.request(method, url, json=payload, headers=headers, timeout=15)
         except Exception as exc:
-            raise FirebaseAuthError(f"Network error: {exc}") from exc
+            raise AuthError(f"Supabase network error: {exc}") from exc
+
+        if response.status_code == 204:
+            return {}
+
+        data: dict | str = {}
+        if response.text:
+            try:
+                data = response.json()
+            except Exception:
+                data = response.text
 
         if not response.ok:
-            message = data.get("error", {}).get("message", "UNKNOWN_ERROR")
-            raise FirebaseAuthError(_map_error(message))
+            detail = "Authentication failed."
+            if isinstance(data, dict):
+                err = data.get("error")
+                if isinstance(err, dict):
+                    err = err.get("message") or err.get("error_description")
+                detail = data.get("msg") or data.get("message") or data.get("error_description") or err or detail
+            elif isinstance(data, str) and data.strip():
+                detail = data.strip()
+
+            if method.upper() == "DELETE" and path == "/auth/v1/user" and response.status_code in {401, 403}:
+                detail = (
+                    f"{detail} (Supabase may require recent sign-in, or user self-delete may be disabled in Auth settings.)"
+                )
+            raise AuthError(str(detail))
         return data
 
     def sign_in(self, email: str, password: str) -> AuthSession:
-        data = self._request(
-            "accounts:signInWithPassword",
-            {"email": email, "password": password, "returnSecureToken": True},
-        )
+        data = self._request("POST", "/auth/v1/token?grant_type=password", {"email": email, "password": password})
+        user = data.get("user") if isinstance(data, dict) else {}
         return AuthSession(
-            email=data.get("email", email),
-            id_token=data.get("idToken", ""),
-            refresh_token=data.get("refreshToken", ""),
-            local_id=data.get("localId", ""),
+            email=(user or {}).get("email", email),
+            id_token=data.get("access_token", ""),
+            refresh_token=data.get("refresh_token", ""),
+            local_id=(user or {}).get("id", ""),
+            username=_extract_username(user),
         )
 
-    def sign_up(self, email: str, password: str) -> AuthSession:
-        data = self._request(
-            "accounts:signUp",
-            {"email": email, "password": password, "returnSecureToken": True},
-        )
+    def sign_up(self, email: str, password: str, username: str | None = None) -> AuthSession:
+        payload: dict[str, object] = {"email": email, "password": password}
+        if isinstance(username, str) and username.strip():
+            payload["data"] = {"username": username.strip()}
+
+        data = self._request("POST", "/auth/v1/signup", payload)
+        user = data.get("user") if isinstance(data, dict) else {}
         return AuthSession(
-            email=data.get("email", email),
-            id_token=data.get("idToken", ""),
-            refresh_token=data.get("refreshToken", ""),
-            local_id=data.get("localId", ""),
+            email=(user or {}).get("email", email),
+            id_token=data.get("access_token", ""),
+            refresh_token=data.get("refresh_token", ""),
+            local_id=(user or {}).get("id", ""),
+            username=_extract_username(user) or (username.strip() if isinstance(username, str) and username.strip() else None),
         )
 
-    def delete_account(self, session: AuthSession) -> None:
-        self._request("accounts:delete", {"idToken": session.id_token})
+

@@ -23,7 +23,11 @@ if ($Clean) {
 & $PythonExe -m pip install pyinstaller
 & $PythonExe -m PyInstaller --noconfirm --clean "$ProjectRoot\HelloWorldGameSpace.spec"
 
+if ($LASTEXITCODE -ne 0) {
+    throw "PyInstaller build failed with exit code $LASTEXITCODE."
+}
+
 Write-Host ''
 Write-Host 'Build complete.'
 Write-Host 'Executable folder:' (Join-Path $ProjectRoot 'dist\HelloWorldGameSpace')
-Write-Host 'If Firebase auth is needed on another machine, place .streamlit\secrets.toml next to the executable folder or set FIREBASE_API_KEY.'
+Write-Host 'Supabase auth config is read from supabase_project.py in the project root.'

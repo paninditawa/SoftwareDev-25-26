@@ -911,6 +911,11 @@
    'Clubs Junior\\TSA\\My Events\\Software '
    'Dev\\SoftDev-Test\\.venv\\Lib\\site-packages\\comtypes\\errorinfo.py',
    'PYMODULE'),
+  ('comtypes.gen',
+   'C:\\Users\\panin\\OneDrive - Lake Washington School District\\Tesla STEM '
+   'Clubs Junior\\TSA\\My Events\\Software '
+   'Dev\\SoftDev-Test\\.venv\\Lib\\site-packages\\comtypes\\gen\\__init__.py',
+   'PYMODULE'),
   ('comtypes.hresult',
    'C:\\Users\\panin\\OneDrive - Lake Washington School District\\Tesla STEM '
    'Clubs Junior\\TSA\\My Events\\Software '

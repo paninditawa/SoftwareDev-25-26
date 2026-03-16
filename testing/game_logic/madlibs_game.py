@@ -132,7 +132,7 @@ WORD_OPTIONS = {
 class MadLibsGame:
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+        self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.FULLSCREEN | pygame.SCALED)
         pygame.display.set_caption("Accessible Mad Libs Game")
         self.font = pygame.font.Font(None, FONT_SIZE)
         self.title_font = pygame.font.Font(None, TITLE_FONT_SIZE)
@@ -200,7 +200,7 @@ class MadLibsGame:
                 y = self.draw_text(f"   ({len(story_data['prompts'])} words to choose)", self.font, TEXT_COLOR, 60, y)
         
         y += 40
-        y = self.draw_text("Press UP/DOWN arrows to navigate. Press SPACE to select. Press Q to quit.", self.font, TEXT_COLOR, 20, y)
+        y = self.draw_text("Press UP/DOWN arrows to navigate. Press SPACE to select.", self.font, TEXT_COLOR, 20, y)
         
         pygame.display.update()
     
@@ -251,7 +251,7 @@ class MadLibsGame:
         y = self.draw_text(story_text, self.font, TEXT_COLOR, 20, y, max_width=WINDOW_WIDTH - 40)
         
         y += 40
-        y = self.draw_text("Press SPACE to play again, or Q to quit.", self.font, TEXT_COLOR, 20, y)
+        y = self.draw_text("Press SPACE to play again.", self.font, TEXT_COLOR, 20, y)
         
         pygame.display.update()
     
@@ -276,14 +276,9 @@ class MadLibsGame:
                 self.user_words = []
                 self.current_option_idx = 0
                 self.state = "playing"
-                
+
                 speak_block(f"Starting {self.current_story['title']}. Let's begin!")
                 self.announce_prompt()
-            
-            elif event.key == pygame.K_q:
-                speak("Goodbye!")
-                pygame.quit()
-                sys.exit()
     
     def announce_prompt(self):
         """Announce current prompt via TTS"""
@@ -317,11 +312,6 @@ class MadLibsGame:
                 self.user_words.append(word)
                 speak(f"Selected: {word}")
                 self.advance_to_next_word()
-            
-            elif event.key == pygame.K_q:
-                speak("Returning to menu.")
-                self.state = "menu"
-                self.current_option_idx = 0
     
     def advance_to_next_word(self):
         """Move to next word or show results"""
@@ -334,7 +324,7 @@ class MadLibsGame:
             self.state = "results"
             speak_block("Your story is complete! Let me read it to you.")
             speak_block(story_text)
-            speak("Press space to play again, or Q to quit.")
+            speak("Press space to play again.")
             self.final_story_text = story_text
         else:
             self.announce_prompt()
@@ -346,21 +336,20 @@ class MadLibsGame:
                 self.state = "menu"
                 self.current_option_idx = 0
                 speak("Returning to menu. Select a story to play.")
-            
-            elif event.key == pygame.K_q:
-                speak("Goodbye!")
-                pygame.quit()
-                sys.exit()
     
     def run(self):
         """Main game loop"""
         speak_block("Welcome to Accessible Mad Libs! You will choose words to complete fun stories. "
-                   "Use arrow keys to navigate, spacebar to select, and M for microphone input. "
-                   "Press Q anytime to quit.")
+                   "Use arrow keys to navigate, spacebar to select.")
         
         while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    speak("Exiting Mad Libs.")
                     pygame.quit()
                     sys.exit()
                 

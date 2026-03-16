@@ -457,7 +457,7 @@ class EscapeRoomGame:
     def __init__(self):
         pygame.init()
         pygame.mixer.init(frequency=SAMPLE_RATE, size=-16, channels=2, buffer=512)
-        self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+        self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.FULLSCREEN | pygame.SCALED)
         pygame.display.set_caption("Escape Room")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont(None, 32)
@@ -779,6 +779,11 @@ class EscapeRoomGame:
         while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    speak("Exiting Escape Room.", interrupt=True)
                     pygame.quit()
                     sys.exit()
 

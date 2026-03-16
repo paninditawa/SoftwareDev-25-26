@@ -4,13 +4,13 @@ import subprocess
 import sys
 import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox
+from tkinter import messagebox, TclError
 
 import customtkinter as ctk
 
 from launcher.accessibility import SpeechManager
 from launcher import apples_service
-from launcher.auth import AuthSession, FirebaseAuthClient, FirebaseAuthError
+from launcher.auth import AuthSession, AuthClient, AuthError
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TESTING_DIR = REPO_ROOT / "testing"
@@ -20,7 +20,7 @@ BATTLESHIP_DIR = TESTING_DIR / "Battleship"
 PAGE_META = {
     "home": {
         "title": "Home",
-        "description": "Welcome to HelloWorld GameSpace. Use Up and Down arrows to choose a page, Enter to activate the focused control, F1 for help, F2 to repeat the last message, and F3 for where-am-I.",
+        "description": "Welcome to HelloWorld GameSpace. Use Up and Down arrows to choose a page. Press Enter or Space to activate.",
         "hint": "Main menu home page.",
         "type": "home",
     },
@@ -73,7 +73,7 @@ PAGE_META = {
     },
     "account": {
         "title": "Account",
-        "description": "Sign out or permanently delete your Firebase account.",
+        "description": "Sign out of your account.",
         "hint": "Press Enter to load account controls.",
         "type": "account",
     },
@@ -93,7 +93,7 @@ class GameSpaceApp(ctk.CTk):
         self.minsize(960, 640)
         self.configure(fg_color="#f2f5fb")
 
-        self.auth_client = FirebaseAuthClient.from_workspace(REPO_ROOT)
+        self.auth_client = AuthClient.from_workspace(REPO_ROOT)
         self.guest_mode = not self.auth_client.is_configured()
         self.speech = SpeechManager(on_announce=self._set_status)
         self.auth_session: AuthSession | None = None
@@ -111,6 +111,7 @@ class GameSpaceApp(ctk.CTk):
         self.login_action_index = 0
 
         self.status_var = tk.StringVar(value="Ready.")
+        self.username_var = tk.StringVar()
         self.email_var = tk.StringVar()
         self.password_var = tk.StringVar()
         self.client_host_var = tk.StringVar(value="127.0.0.1")
@@ -162,6 +163,7 @@ class GameSpaceApp(ctk.CTk):
                 id_token="",
                 refresh_token="",
                 local_id="",
+                username="Guest Tester",
             )
             self.show_menu()
         elif self.auth_client.is_configured():
@@ -189,32 +191,29 @@ class GameSpaceApp(ctk.CTk):
         self.nav_mode = True
 
     def _bind_global_keys(self) -> None:
-        self.bind_all("<F1>", self._handle_help, add="+")
-        self.bind_all("<F2>", self._handle_repeat, add="+")
-        self.bind_all("<F3>", self._handle_where_am_i, add="+")
-        self.bind_all("<Control-h>", self._handle_help, add="+")
-        self.bind_all("<Control-r>", self._handle_repeat, add="+")
-        self.bind_all("<Control-w>", self._handle_where_am_i, add="+")
-        self.bind_all("<Escape>", self._handle_escape, add="+")
         self.bind_all("<Up>", lambda event: self._handle_vertical(-1), add="+")
         self.bind_all("<Down>", lambda event: self._handle_vertical(1), add="+")
         self.bind_all("<Left>", self._handle_left, add="+")
         self.bind_all("<Right>", self._handle_right, add="+")
-        self.bind_all("<Tab>", self._handle_tab_mode_toggle, add="+")
         self.bind_all("<Return>", self._handle_activate, add="+")
         self.bind_all("<KP_Enter>", self._handle_activate, add="+")
         self.bind_all("<space>", self._handle_activate, add="+")
 
+    def _bind_tab_aliases(self, widget: tk.Widget) -> None:
+        widget.bind("<Shift-Tab>", lambda event: self._handle_vertical(-1), add="+")
+        widget.bind("<ISO_Left_Tab>", lambda event: self._handle_vertical(-1), add="+")
+        widget.bind("<Tab>", lambda event: self._handle_vertical(1), add="+")
+
     def _handle_help(self, _event=None):
         if self.current_screen == "login":
             self.speech.announce(
-                "Login screen help. Tab between Email, Password, Sign In, and Create Account. Press Enter to activate the focused button. F2 repeats the last message and F3 says where you are.",
+                "Login screen help. Use Up and Down arrows to move between buttons. Press Enter or Space to activate. Username is required when creating a new account.",
                 interrupt=True,
                 force=True,
             )
         elif self.current_screen == "menu":
             self.speech.announce(
-                "Menu help. Use Up and Down arrows to move between pages. Press Enter on a page button to load its controls. Tab moves into action buttons. Escape returns focus to the page list.",
+                "Menu help. Use Up and Down arrows to move between pages. Press Right Arrow or Enter to move into action buttons. Press Left Arrow to return to the page list.",
                 interrupt=True,
                 force=True,
             )
@@ -366,6 +365,7 @@ class GameSpaceApp(ctk.CTk):
 
     def _register_login_button(self, button: ctk.CTkButton, label: str, hint: str) -> None:
         self.speech.bind_focus(button, label, hint)
+        self._bind_tab_aliases(button)
         self.login_action_buttons.append(button)
 
         def _on_focus(_event=None):
@@ -439,14 +439,13 @@ class GameSpaceApp(ctk.CTk):
         frame = ctk.CTkFrame(self.content)
         frame.pack(fill="both", expand=True, padx=24, pady=24)
 
-        title = ctk.CTkLabel(frame, text="Firebase Is Not Configured", font=ctk.CTkFont(size=24, weight="bold"))
+        title = ctk.CTkLabel(frame, text="Auth Is Not Configured", font=ctk.CTkFont(size=24, weight="bold"))
         title.pack(anchor="w", padx=24, pady=(24, 12))
 
         message = ctk.CTkLabel(
             frame,
             text=(
-                "Add firebase_api_key to .streamlit/secrets.toml or testing/.streamlit/secrets.toml, "
-                "or set FIREBASE_API_KEY before launching this desktop app."
+                "Configure Supabase in supabase_project.py to enable account login."
             ),
             wraplength=780,
             justify="left",
@@ -456,7 +455,9 @@ class GameSpaceApp(ctk.CTk):
 
         paths = ctk.CTkLabel(
             frame,
-            text=f"Expected secrets locations:\n{REPO_ROOT / '.streamlit' / 'secrets.toml'}\n{TESTING_DIR / '.streamlit' / 'secrets.toml'}",
+            text=(
+                f"Supabase config locations:\n{REPO_ROOT / 'supabase_project.py'}\n{REPO_ROOT / 'launcher' / 'supabase_project.py'}"
+            ),
             justify="left",
             anchor="w",
         )
@@ -464,14 +465,17 @@ class GameSpaceApp(ctk.CTk):
 
         self.speech.set_screen(
             "Configuration error",
-            "Firebase is not configured. Add a Firebase API key in secrets before using the launcher.",
+            "Auth is not configured. Set Supabase or another supported auth provider before using login.",
         )
 
     def show_login(self) -> None:
         self.current_screen = "login"
         self._clear_content()
-        self.email_var.set("")
-        self.password_var.set("")
+
+        # Recreate vars to avoid stale widget traces after screen teardown/rebuild.
+        self.username_var = tk.StringVar()
+        self.email_var = tk.StringVar()
+        self.password_var = tk.StringVar()
 
         wrapper = ctk.CTkFrame(self.content, fg_color="transparent")
         wrapper.pack(expand=True)
@@ -484,18 +488,24 @@ class GameSpaceApp(ctk.CTk):
 
         summary = ctk.CTkLabel(
             card,
-            text="This launcher is keyboard-first and speaks focus changes. Use Tab to move through controls.",
+            text="This launcher is keyboard-first and speaks focus changes. Use Up and Down arrows to move between buttons. Username is required when creating a new account.",
             wraplength=460,
             justify="left",
             anchor="w",
         )
         summary.pack(anchor="w", padx=24, pady=(0, 16))
 
+        username_label = ctk.CTkLabel(card, text="Username (for new accounts)")
+        username_label.pack(anchor="w", padx=24)
+        username_entry = ctk.CTkEntry(card, textvariable=self.username_var, width=460)
+        username_entry.pack(padx=24, pady=(4, 16))
+        self.speech.bind_focus(username_entry, "Username field", "Type a username when creating a new account.")
+
         email_label = ctk.CTkLabel(card, text="Email")
         email_label.pack(anchor="w", padx=24)
         email_entry = ctk.CTkEntry(card, textvariable=self.email_var, width=460)
         email_entry.pack(padx=24, pady=(4, 16))
-        self.speech.bind_focus(email_entry, "Email field", "Type your Firebase email address.")
+        self.speech.bind_focus(email_entry, "Email field", "Type your account email address.")
 
         password_label = ctk.CTkLabel(card, text="Password")
         password_label.pack(anchor="w", padx=24)
@@ -513,13 +523,14 @@ class GameSpaceApp(ctk.CTk):
 
         create_button = ctk.CTkButton(button_row, text="Create Account", command=self._sign_up)
         create_button.grid(row=0, column=1, padx=(8, 0), sticky="ew")
-        self._register_login_button(create_button, "Create Account button", "Activate to create a new Firebase account.")
+        self._register_login_button(create_button, "Create Account button", "Activate to create a new account.")
 
         help_button = ctk.CTkButton(card, text="Read Login Help", command=self._handle_help)
         help_button.pack(padx=24, pady=(0, 24), fill="x")
         self._register_login_button(help_button, "Read Login Help button", "Activate to hear login instructions again.")
 
         # Enter from fields should work for fast keyboard-only login flow.
+        username_entry.bind("<Return>", lambda _event: self._sign_in(), add="+")
         email_entry.bind("<Return>", lambda _event: self._sign_in(), add="+")
         password_entry.bind("<Return>", lambda _event: self._sign_in(), add="+")
 
@@ -527,7 +538,7 @@ class GameSpaceApp(ctk.CTk):
         self.after(250, self._style_login_buttons)
         self.speech.set_screen(
             "Login screen",
-            "Enter email and password, then choose Sign In or Create Account.",
+            "Enter username, email, and password. Use Up and Down arrows to move between buttons, Enter or Space to activate.",
         )
 
     def _sign_in(self) -> None:
@@ -537,8 +548,14 @@ class GameSpaceApp(ctk.CTk):
         self._run_auth_action("sign_up")
 
     def _run_auth_action(self, action: str) -> None:
-        email = self.email_var.get().strip()
-        password = self.password_var.get()
+        try:
+            username = self.username_var.get().strip()
+            email = self.email_var.get().strip()
+            password = self.password_var.get()
+        except TclError:
+            self.speech.announce("Please try again.", interrupt=True, force=True)
+            self.after_idle(self.show_login)
+            return
         if not email or not password:
             self.speech.announce("Email and password are required.", interrupt=True, force=True)
             messagebox.showerror("Missing information", "Email and password are required.")
@@ -547,15 +564,19 @@ class GameSpaceApp(ctk.CTk):
             self.speech.announce("Password must be at least 6 characters.", interrupt=True, force=True)
             messagebox.showerror("Password too short", "Password must be at least 6 characters.")
             return
+        if action == "sign_up" and not username:
+            self.speech.announce("Username is required to create an account.", interrupt=True, force=True)
+            messagebox.showerror("Missing username", "Username is required to create an account.")
+            return
 
         try:
             if action == "sign_in":
                 self.auth_session = self.auth_client.sign_in(email, password)
                 self.speech.announce("Signed in successfully.", interrupt=True, force=True)
             else:
-                self.auth_session = self.auth_client.sign_up(email, password)
+                self.auth_session = self.auth_client.sign_up(email, password, username=username)
                 self.speech.announce("Account created successfully.", interrupt=True, force=True)
-        except FirebaseAuthError as exc:
+        except AuthError as exc:
             self.speech.announce(str(exc), interrupt=True, force=True)
             messagebox.showerror("Authentication error", str(exc))
             return
@@ -588,12 +609,13 @@ class GameSpaceApp(ctk.CTk):
         details.grid_rowconfigure(2, weight=1)
 
         mode_prefix = "Signed in as" if not self.guest_mode else "Testing as"
-        welcome = ctk.CTkLabel(nav, text=f"{mode_prefix} {self.auth_session.email}", wraplength=220, justify="left")
+        display_name = self.auth_session.username or self.auth_session.email
+        welcome = ctk.CTkLabel(nav, text=f"{mode_prefix} {display_name}", wraplength=220, justify="left")
         welcome.pack(anchor="w", padx=16, pady=(16, 10))
 
         nav_text = "Use Up/Down arrows to change pages."
         if self.guest_mode:
-            nav_text += " Firebase account tools are hidden in guest tester mode."
+            nav_text += " Account tools are hidden in guest tester mode."
         nav_help = ctk.CTkLabel(nav, text=nav_text, justify="left", wraplength=220)
         nav_help.pack(anchor="w", padx=16, pady=(0, 12))
 
@@ -602,6 +624,7 @@ class GameSpaceApp(ctk.CTk):
             button = ctk.CTkButton(nav, text=title, anchor="w", command=lambda page=key: self.select_page(page, announce=True))
             button.pack(fill="x", padx=16, pady=4)
             self.speech.bind_focus(button, title, PAGE_META[key]["hint"])
+            self._bind_tab_aliases(button)
             self.nav_buttons[key] = button
 
         self.detail_title = ctk.CTkLabel(details, text="", font=ctk.CTkFont(size=24, weight="bold"))
@@ -618,7 +641,7 @@ class GameSpaceApp(ctk.CTk):
         self.after(150, self._sync_keyboard_focus)
         self.speech.set_screen(
             "Main menu",
-            "Choose a page with Up and Down arrows. Press Right Arrow or Enter to enter action buttons. Press Left Arrow to return to pages.",
+            "Use Up and Down arrows to choose a page. Press Right Arrow or Enter to activate. Press Left Arrow to go back.",
         )
 
     def select_page(self, page_key: str, announce: bool = True) -> None:
@@ -649,6 +672,7 @@ class GameSpaceApp(ctk.CTk):
         button = ctk.CTkButton(self.action_frame, text=text, command=command)
         button.pack(fill="x", pady=6)
         self.speech.bind_focus(button, text, hint)
+        self._bind_tab_aliases(button)
         self.action_widgets.append(button)
         self.action_buttons.append(button)
         return button
@@ -656,6 +680,7 @@ class GameSpaceApp(ctk.CTk):
     def _register_action_button(self, button: ctk.CTkButton, hint: str) -> None:
         text = button.cget("text")
         self.speech.bind_focus(button, text, hint)
+        self._bind_tab_aliases(button)
         self.action_widgets.append(button)
         self.action_buttons.append(button)
 
@@ -667,7 +692,7 @@ class GameSpaceApp(ctk.CTk):
         if kind == "home":
             helper = ctk.CTkLabel(
                 self.action_frame,
-                text="Choose a game or account option from the left menu. F1 reads help, F2 repeats, F3 tells you where you are.",
+                text="Choose a game or account option from the left menu. Use Up and Down arrows to navigate, Enter or Space to activate.",
                 justify="left",
                 anchor="w",
                 wraplength=620,
@@ -707,7 +732,6 @@ class GameSpaceApp(ctk.CTk):
                 self.action_buttons = []
                 return
             self._add_action_button("Sign Out", self._sign_out, "Activate to sign out and return to login.")
-            self._add_action_button("Delete Account", self._delete_account, "Activate to permanently delete your Firebase account.")
             return
 
     def _render_battleship_actions(self) -> None:
@@ -1064,32 +1088,7 @@ class GameSpaceApp(ctk.CTk):
             return
         self.auth_session = None
         self.speech.announce("Signed out.", interrupt=True, force=True)
-        self.show_login()
-
-    def _delete_account(self) -> None:
-        if self.guest_mode:
-            self.speech.announce("Guest tester mode has no account to delete.", interrupt=True, force=True)
-            return
-        if self.auth_session is None:
-            return
-        confirmed = messagebox.askyesno(
-            "Delete account",
-            "Delete your Firebase account permanently? This cannot be undone.",
-        )
-        if not confirmed:
-            self.speech.announce("Account deletion cancelled.", interrupt=True, force=True)
-            return
-
-        try:
-            self.auth_client.delete_account(self.auth_session)
-        except FirebaseAuthError as exc:
-            self.speech.announce(str(exc), interrupt=True, force=True)
-            messagebox.showerror("Delete account failed", str(exc))
-            return
-
-        self.auth_session = None
-        self.speech.announce("Your account has been deleted.", interrupt=False, force=True)
-        self.show_login()
+        self.after_idle(self.show_login)
 
     def _on_close(self) -> None:
         if self.server_process and self.server_process.poll() is None:

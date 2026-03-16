@@ -154,7 +154,7 @@ def draw_board(screen, board, selector_col):
 # -----------------------------
 def main():
     pygame.init()
-    screen = pygame.display.set_mode(SIZE)
+    screen = pygame.display.set_mode(SIZE, pygame.FULLSCREEN | pygame.SCALED)
     pygame.display.set_caption("Accessible Connect 4")
 
     board = create_board()
@@ -184,6 +184,11 @@ def main():
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                speak("Exiting Connect 4.")
                 pygame.quit()
                 sys.exit()
 

@@ -29,7 +29,7 @@ python -m pip install -r requirements.txt
 python launch_gamespace.py
 ```
 
-No Firebase setup is needed for normal testing. The desktop app will use Guest Tester mode.
+Sign-in works out of the box after cloning. No extra setup needed.
 
 ## Before You Commit
 
@@ -39,13 +39,7 @@ No Firebase setup is needed for normal testing. The desktop app will use Guest T
 
 ## Secrets
 
-- Firebase is owner-only. Most contributors should not set a key.
-- If you do need account features, use `.streamlit/secrets.toml` or `testing/.streamlit/secrets.toml` locally.
-- Keep `REPLACE_WITH_FIREBASE_WEB_API_KEY` in any committed template files.
+- `supabase_project.py` contains the shared anon key — this is intentionally committed and safe to share.
+- Never add or commit any Supabase service role key.
+- `config.py` and `testing/config.py` are gitignored for local overrides.
 
-## Optional Legacy Run (Streamlit)
-
-```bash
-cd testing
-streamlit run main.py
-```
