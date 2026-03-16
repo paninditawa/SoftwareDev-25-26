@@ -32,7 +32,7 @@ except ImportError:
 
 _sr_available = False
 try:
-    import speech_recognition as sr
+    import speech_recognition as sr  # pyright: ignore[reportMissingImports]
     _sr_available = True
 except ImportError:
     pass
@@ -472,6 +472,7 @@ class EscapeRoomGame:
         self.snd_listen = _tone(880, 0.06, 0.3)
 
         self.voice = VoiceListener()
+        self.keyboard_mode = not self.voice.available
         self.levels = build_levels()
         self.state = "menu"
         self.current_level = None
@@ -479,12 +480,18 @@ class EscapeRoomGame:
         self.inventory = []
         self.completed = set()
         self.listening = False
-        self.status_text = "Hold SPACEBAR to speak"
+        self.command_buffer = ""
+        self.status_text = "Type a command and press ENTER" if self.keyboard_mode else "Hold SPACEBAR to speak"
 
     def draw(self):
         self.screen.fill((10, 10, 15))
         surf = self.font.render(self.status_text, True, (180, 180, 200))
         self.screen.blit(surf, (SCREEN_W // 2 - surf.get_width() // 2, SCREEN_H // 2 - 40))
+
+        if self.keyboard_mode:
+            typed = self.command_buffer[-48:] if self.command_buffer else ""
+            prompt = self.small_font.render("Type command + ENTER: " + typed, True, (210, 210, 230))
+            self.screen.blit(prompt, (SCREEN_W // 2 - prompt.get_width() // 2, SCREEN_H // 2 + 8))
 
         if self.listening:
             pygame.draw.circle(self.screen, (220, 60, 60), (SCREEN_W // 2, SCREEN_H // 2 + 30), 12)
@@ -517,6 +524,7 @@ class EscapeRoomGame:
             speak(
                 "This is a voice-activated escape room. "
                 "Hold spacebar to speak, then let go. "
+                "If voice is unavailable, type a command and press enter. "
                 "You'll explore rooms, solve puzzles, and collect items to escape. "
                 "Say things like: look around, go north, hint, inventory, or solve followed by your answer. "
                 "Say start to begin."
@@ -752,28 +760,21 @@ class EscapeRoomGame:
     def run(self):
         time.sleep(0.5)
 
-        if not self.voice.available:
+        if self.keyboard_mode:
             speak(
                 "Welcome to the Escape Room. "
-                "Voice commands aren't available yet. "
-                "Close the game and run: pip install SpeechRecognition PyAudio. "
-                "Then relaunch."
+                "Voice commands are unavailable right now. "
+                "You can still play by typing commands and pressing enter. "
+                "Type start to begin, or help for instructions."
             )
-            while True:
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        pygame.quit()
-                        sys.exit()
-                self.status_text = "Install SpeechRecognition + PyAudio"
-                self.draw()
-                self.clock.tick(15)
-
-        speak(
-            "Welcome to the Escape Room. "
-            "Hold the spacebar to speak, then let go. "
-            "Say start to begin, or help for instructions."
-        )
-        self.status_text = "Hold SPACEBAR to speak"
+            self.status_text = "Type a command and press ENTER"
+        else:
+            speak(
+                "Welcome to the Escape Room. "
+                "Hold the spacebar to speak, then let go. "
+                "Say start to begin, or help for instructions."
+            )
+            self.status_text = "Hold SPACEBAR to speak"
 
         while True:
             for event in pygame.event.get():
@@ -781,8 +782,22 @@ class EscapeRoomGame:
                     pygame.quit()
                     sys.exit()
 
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                    if not self.listening:
+                if event.type == pygame.KEYDOWN:
+                    if self.keyboard_mode:
+                        if event.key == pygame.K_RETURN:
+                            typed = self.command_buffer.strip()
+                            self.command_buffer = ""
+                            if typed:
+                                self.process_command(typed.lower())
+                                self.status_text = "Type a command and press ENTER"
+                        elif event.key == pygame.K_BACKSPACE:
+                            self.command_buffer = self.command_buffer[:-1]
+                        elif event.key == pygame.K_ESCAPE:
+                            pygame.quit()
+                            sys.exit()
+                        elif event.unicode and event.unicode.isprintable():
+                            self.command_buffer += event.unicode
+                    elif event.key == pygame.K_SPACE and not self.listening:
                         self.listening = True
                         self.snd_listen.play()
                         self.status_text = "Listening..."
