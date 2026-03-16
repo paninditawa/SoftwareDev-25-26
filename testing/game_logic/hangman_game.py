@@ -3,6 +3,8 @@ import pygame
 import sys
 import random
 import math
+import time
+from pathlib import Path
 
 # import PyAudio as pyaudio
 # import speech_recognition as sr
@@ -86,15 +88,27 @@ class HangmanGame:
         self.reset_game()
         self.speak("Welcome to Hangman! Your goal is to guess a word letter by letter. Start by saying any letter!")
 
+    def speak(self, text):
+        speak(text)
+
+    def speak_block(self, text):
+        speak_block(text)
+
+    def _elapsed_text(self):
+        elapsed = max(0, int(time.time() - self.start_time))
+        minutes, seconds = divmod(elapsed, 60)
+        return f"{minutes} minutes and {seconds} seconds"
+
     def reset_game(self):
 
         self.word = random.choice(WORDS)
         self.guessed = []
         self.hangman = 0
+        self.start_time = time.time()
 
         for letter in self.letters:
             letter[3] = True
-        self.speak_block("The word has"+self.word.len+"letters!")
+        self.speak_block(f"The word has {len(self.word)} letters!")
 
 
     def create_buttons(self):
@@ -188,10 +202,10 @@ class HangmanGame:
 
         if self.result == "win":
             msg = "YOU WON!"
-            self.speak("You won!!! It took you "+self.clock.minutes+"minutes and "+self.clock.seconds+"seconds")
+            self.speak(f"You won! It took you {self._elapsed_text()}")
         else:
             msg = f"YOU LOST! Word was {self.word}"
-            self.speak("YOU LOST! Word was"+self.word". It took you "+self.clock.minutes+"minutes and "+self.clock.seconds+"seconds")
+            self.speak(f"You lost. The word was {self.word}. It took you {self._elapsed_text()}")
 
         text = self.title_font.render(msg,1,TEXT_COLOR)
 
