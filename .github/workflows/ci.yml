@@ -1,37 +1,74 @@
+# This is the display name of this automation workflow.
 name: CI
 
+# This section says when the workflow should start.
 on:
+  # Run this workflow when code is pushed to the repository.
   push:
+  # Run this workflow when someone opens or updates a pull request.
   pull_request:
 
+# This section contains all jobs (groups of steps) in this workflow.
 jobs:
+  # This job does a quick health check to make sure key imports work.
   smoke-test:
+    # Run this job on each operating system listed in the matrix below.
     runs-on: ${{ matrix.os }}
+    # This creates combinations so the same job runs multiple times.
     strategy:
+      # Keep running other OS jobs even if one OS fails.
+      fail-fast: false
+      # Matrix values define those combinations.
       matrix:
+        # Test on Linux, macOS, and Windows.
         os: [ubuntu-latest, macos-latest, windows-latest]
+        # Use Python version 3.10.
         python-version: [3.10]
+    # Steps are the actions this job performs in order.
     steps:
+      # Download this repository's code into the runner machine.
       - uses: actions/checkout@v4
+      # Human-readable step name shown in the Actions UI.
       - name: Set up Python
+        # Install and configure the requested Python version.
         uses: actions/setup-python@v4
+        # Provide input values to the action above.
         with:
+          # Use the Python version from the matrix for this run.
           python-version: ${{ matrix.python-version }}
+      # Human-readable step name shown in the Actions UI.
       - name: Upgrade pip
+        # Update pip (Python package installer) to the latest version.
         run: python -m pip install --upgrade pip
+      # Human-readable step name shown in the Actions UI.
       - name: Install dependencies
+        # Install required Python packages listed in requirements.txt.
         run: python -m pip install -r requirements.txt
+      # Human-readable step name shown in the Actions UI.
       - name: Repo import smoke test
+        # Run a short Python script directly in the workflow.
         run: |
+          # Start an inline Python script and label its end with PY.
           python - <<'PY'
+          # Import system-level Python tools.
           import sys
+          # Import Path helper for working with folders.
           from pathlib import Path
+          # Add the current folder so local project files can be imported.
           sys.path.insert(0, str(Path.cwd()))
+          # Try importing important modules to confirm basics still work.
           try:
+              # Import the text-to-speech module from this project.
               import tts
-              import maze_game
+              # Import the maze game module from its folder path.
+              import testing.game_logic.maze_game
+              # Print success text in the workflow log.
               print('imports OK')
+          # If any import fails, handle and report the error.
           except Exception as e:
+              # Print failure text and the error message in the log.
               print('import failed:', e)
+              # Stop this step with an error so the workflow fails visibly.
               raise
+          # End marker for the inline Python script above.
           PY
