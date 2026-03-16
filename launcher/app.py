@@ -45,6 +45,13 @@ PAGE_META = {
         "type": "script",
         "path": GAME_LOGIC_DIR / "madlibs_game.py",
     },
+    "escape": {
+        "title": "Escape Room",
+        "description": "Launches the accessible Escape Room adventure game.",
+        "hint": "Press Enter to load launch controls for Escape Room.",
+        "type": "script",
+        "path": GAME_LOGIC_DIR / "escape_room_game.py",
+    },
     "connect4": {
         "title": "Connect 4",
         "description": "Launches the accessible pygame Connect 4 game.",
@@ -72,7 +79,7 @@ PAGE_META = {
     },
 }
 
-MENU_ORDER = ["home", "hangman", "maze", "madlibs", "connect4", "apples", "battleship", "account"]
+MENU_ORDER = ["home", "hangman", "maze", "madlibs", "escape", "connect4", "apples", "battleship", "account"]
 
 
 class GameSpaceApp(ctk.CTk):

@@ -94,7 +94,7 @@ python launch_gamespace.py
 - Built-in spoken focus/context announcements.
 - Guest Tester mode when Firebase is not configured.
 - Firebase account sign-in/sign-up/delete account when configured.
-- Launch support for Hangman, Maze, Mad Libs, Connect 4, Apples to Apples, and Battleship.
+- Launch support for Hangman, Maze, Mad Libs, Escape Room, Connect 4, Apples to Apples, and Battleship.
 
 ## Build Windows Executable (Optional)
 
