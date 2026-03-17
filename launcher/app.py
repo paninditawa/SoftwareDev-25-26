@@ -516,6 +516,7 @@ class GameSpaceApp(ctk.CTk):
         )
         summary.pack(anchor="w", padx=24, pady=(0, 16))
 
+        email_entry_widget: ctk.CTkEntry | None = None
         for var, label_text, hint, show in [
             (self.username_var, "Username (for new accounts)", "Type a username when creating a new account.", ""),
             (self.email_var,    "Email",                       "Type your account email address.",             ""),
@@ -525,6 +526,8 @@ class GameSpaceApp(ctk.CTk):
             entry = ctk.CTkEntry(card, textvariable=var, width=460, show=show)
             entry.pack(padx=24, pady=(4, 16))
             self.speech.bind_focus(entry, f"{label_text} field", hint)
+            if var is self.email_var:
+                email_entry_widget = entry
 
         button_row = ctk.CTkFrame(card, fg_color="transparent")
         button_row.pack(fill="x", padx=24, pady=(0, 12))
@@ -542,7 +545,8 @@ class GameSpaceApp(ctk.CTk):
         help_button.pack(padx=24, pady=(0, 24), fill="x")
         self._register_login_button(help_button, "Read Login Help button", "Activate to hear login instructions.")
 
-        self.after(150, lambda: None)  # settle focus
+        if email_entry_widget is not None:
+            self.after(150, email_entry_widget.focus_set)  # move cursor into the email field
         self.after(250, self._style_login_buttons)
         self.speech.set_screen("Login screen", "Enter email and password. Use Up and Down arrows to move between buttons.")
 
