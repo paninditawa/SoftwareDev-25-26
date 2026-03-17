@@ -365,9 +365,18 @@ threading.Thread(target=listen_server, daemon=True).start()
 # ---------------------------------------------------------------------------
 
 screen  = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-font_sm = pygame.font.SysFont(None, 24, bold=True)
-font_md = pygame.font.SysFont(None, 30, bold=True)
+font_sm = pygame.font.SysFont("segoeui", 22, bold=False)
+font_md = pygame.font.SysFont("segoeui", 28, bold=False)
 pygame.display.set_caption("EchoFleet Battleship")
+
+
+def _fit_text(font, text: str, max_width: int) -> str:
+    if font.size(text)[0] <= max_width:
+        return text
+    trimmed = text
+    while trimmed and font.size(trimmed + "...")[0] > max_width:
+        trimmed = trimmed[:-1]
+    return (trimmed + "...") if trimmed else "..."
 
 
 def draw_grid(offset_x: int, hits, show_ships: bool) -> None:
@@ -428,11 +437,15 @@ def draw_labels() -> None:
 
 def draw_status() -> None:
     y = BOARD_OFFSET_Y + BOARD_SIZE * CELL + 10
-    screen.blit(font_md.render(describe_status(), True, C_TEXT), (20, y))
+    max_w = WINDOW_WIDTH - 40
+    line = _fit_text(font_md, describe_status(), max_w)
+    screen.blit(font_md.render(line, True, C_TEXT), (20, y))
     if last_spoken_text:
-        screen.blit(font_sm.render(f"↗ {last_spoken_text}", True, C_DIM), (20, y + 28))
+        spoken = _fit_text(font_sm, f"↗ {last_spoken_text}", max_w)
+        screen.blit(font_sm.render(spoken, True, C_DIM), (20, y + 28))
     if not server_connected:
-        screen.blit(font_sm.render(f"Disconnected: {server_error}", True, C_HIT), (20, y + 50))
+        err = _fit_text(font_sm, f"Disconnected: {server_error}", max_w)
+        screen.blit(font_sm.render(err, True, C_HIT), (20, y + 50))
 
 # ---------------------------------------------------------------------------
 # Main loop

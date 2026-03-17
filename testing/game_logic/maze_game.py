@@ -36,6 +36,34 @@ DARK   = (18,   24,  33)
 
 SCREEN_W, SCREEN_H = 820, 720
 
+
+def _recommended_window_size(base_w: int, base_h: int) -> tuple[int, int]:
+    screen_w = base_w
+    screen_h = base_h
+
+    if sys.platform.startswith("win"):
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            rect = wintypes.RECT()
+            SPI_GETWORKAREA = 0x0030
+            if ctypes.windll.user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(rect), 0):
+                screen_w = rect.right - rect.left
+                screen_h = rect.bottom - rect.top
+        except Exception:
+            pass
+    else:
+        info = pygame.display.Info()
+        if info.current_w > 0:
+            screen_w = info.current_w
+        if info.current_h > 0:
+            screen_h = info.current_h
+
+    width = max(base_w, min(screen_w - 40, int(screen_w * 0.96)))
+    height = max(base_h, min(screen_h - 60, int(screen_h * 0.94)))
+    return width, height
+
 # ---------------------------------------------------------------------------
 # Speech engine — cross-platform wrapper around the `tts` helper.
 # ---------------------------------------------------------------------------
@@ -157,9 +185,9 @@ class SizeSelectScreen:
         self.min_sz  = 5
         self.max_sz  = 25
         self.done    = False
-        self.font    = pygame.font.SysFont(None, 40, bold=True)
-        self.big     = pygame.font.SysFont(None, 70, bold=True)
-        self.small   = pygame.font.SysFont(None, 32, bold=True)
+        self.font    = pygame.font.SysFont("segoeui", 36, bold=False)
+        self.big     = pygame.font.SysFont("segoeui", 62, bold=False)
+        self.small   = pygame.font.SysFont("segoeui", 28, bold=False)
         self.speech.speak(
             "Welcome to Accessible Maze Game. "
             "Use the UP and DOWN arrow keys to choose your maze size. "
@@ -239,9 +267,9 @@ class MazeGame:
         self.cols    = cols
         self.rows    = rows
         self.tile    = min(680 // max(cols, rows), 56)
-        self.font    = pygame.font.SysFont(None, 32, bold=True)
-        self.big     = pygame.font.SysFont(None, 56, bold=True)
-        self.small   = pygame.font.SysFont(None, 28, bold=True)
+        self.font    = pygame.font.SysFont("segoeui", 30, bold=False)
+        self.big     = pygame.font.SysFont("segoeui", 50, bold=False)
+        self.small   = pygame.font.SysFont("segoeui", 24, bold=False)
 
         # Sounds
         self.snd_move    = _make_tone(520,  0.09)
@@ -341,6 +369,8 @@ class MazeGame:
     # ------------------------------------------------------------------
     def draw(self):
         self.screen.fill(DARK)
+        screen_w = self.screen.get_width()
+        screen_h = self.screen.get_height()
         t  = self.tile
         ox = (SCREEN_W - self.cols * t) // 2
         oy = 40 + (SCREEN_H - 80 - self.rows * t) // 2
@@ -394,16 +424,22 @@ class MazeGame:
             "ARROWS=move   SPACE=scan directions   (win: ENTER=new maze   SPACE=menu)",
             True, GRAY
         )
-        self.screen.blit(hud, (SCREEN_W//2 - hud.get_width()//2, 10))
+        hud_text = "ARROWS=move   SPACE=scan directions   (win: ENTER=new maze   SPACE=menu)"
+        while hud_text and self.small.size(hud_text)[0] > screen_w - 20:
+            hud_text = hud_text[:-1]
+        hud = self.small.render(hud_text, True, GRAY)
+        self.screen.blit(hud, (screen_w//2 - hud.get_width()//2, 10))
 
         # HUD bottom
-        pos = self.font.render(
+        pos_text = (
             f"Position: ({self.player[0]}, {self.player[1]})   "
             f"Exit: ({self.exit_pos[0]}, {self.exit_pos[1]})   "
-            f"Moves: {self.moves}",
-            True, WHITE
+            f"Moves: {self.moves}"
         )
-        self.screen.blit(pos, (SCREEN_W//2 - pos.get_width()//2, SCREEN_H - 28))
+        while pos_text and self.font.size(pos_text)[0] > screen_w - 20:
+            pos_text = pos_text[:-1]
+        pos = self.font.render(pos_text, True, WHITE)
+        self.screen.blit(pos, (screen_w//2 - pos.get_width()//2, screen_h - 28))
 
         # Win overlay
         if self.won:
@@ -423,7 +459,9 @@ class MazeGame:
 def main():
     pygame.init()
     pygame.mixer.init(frequency=SAMPLE_RATE, size=-16, channels=2, buffer=512)
-    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.FULLSCREEN | pygame.SCALED)
+    global SCREEN_W, SCREEN_H
+    SCREEN_W, SCREEN_H = _recommended_window_size(SCREEN_W, SCREEN_H)
+    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption("Accessible Maze Game")
 
     speech   = SpeechEngine()

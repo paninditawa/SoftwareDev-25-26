@@ -38,6 +38,34 @@ WHITE = (255, 255, 255)
 BOARD_HOLE = (241, 245, 249)
 PIECE_TEXT = (255, 255, 255)
 
+
+def _recommended_window_size(base_w: int, base_h: int) -> tuple[int, int]:
+    screen_w = base_w
+    screen_h = base_h
+
+    if sys.platform.startswith("win"):
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            rect = wintypes.RECT()
+            SPI_GETWORKAREA = 0x0030
+            if ctypes.windll.user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(rect), 0):
+                screen_w = rect.right - rect.left
+                screen_h = rect.bottom - rect.top
+        except Exception:
+            pass
+    else:
+        info = pygame.display.Info()
+        if info.current_w > 0:
+            screen_w = info.current_w
+        if info.current_h > 0:
+            screen_h = info.current_h
+
+    width = max(base_w, min(screen_w - 40, int(screen_w * 0.96)))
+    height = max(base_h, min(screen_h - 60, int(screen_h * 0.94)))
+    return width, height
+
 # -----------------------------
 # TTS (cross-platform)
 # -----------------------------
@@ -143,7 +171,7 @@ def announce_column(board, col):
 # -----------------------------
 def draw_board(screen, board, selector_col):
     screen.fill(WHITE)
-    piece_font = pygame.font.SysFont(None, 42, bold=True)
+    piece_font = pygame.font.SysFont("segoeui", 40)
 
     # Selector arrow
     x = selector_col * SQUARESIZE + SQUARESIZE//2
@@ -199,7 +227,17 @@ def draw_board(screen, board, selector_col):
 # -----------------------------
 def main():
     pygame.init()
-    screen = pygame.display.set_mode(SIZE, pygame.FULLSCREEN | pygame.SCALED)
+    global SQUARESIZE, RADIUS, WIDTH, HEIGHT, SIZE
+    target_w, target_h = _recommended_window_size(WIDTH, HEIGHT)
+    square_w = max(80, target_w // COLS)
+    square_h = max(80, target_h // (ROWS + 1))
+    SQUARESIZE = min(square_w, square_h)
+    RADIUS = int(SQUARESIZE / 2 - 5)
+    WIDTH = COLS * SQUARESIZE
+    HEIGHT = (ROWS + 1) * SQUARESIZE
+    SIZE = (WIDTH, HEIGHT)
+
+    screen = pygame.display.set_mode(SIZE)
     pygame.display.set_caption("Accessible Connect 4")
 
     board = create_board()

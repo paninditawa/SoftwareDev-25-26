@@ -135,7 +135,8 @@ APP_FONT_FAMILY = "Segoe UI"
 
 
 def _font(size: int, bold: bool = False) -> ctk.CTkFont:
-    return ctk.CTkFont(family=APP_FONT_FAMILY, size=size, weight="bold" if bold else "normal")
+    weight = "bold" if (bold and size >= 24) else "normal"
+    return ctk.CTkFont(family=APP_FONT_FAMILY, size=size, weight=weight)
 
 # main launcher window + shared app state
 class GameSpaceApp(ctk.CTk):
@@ -170,6 +171,7 @@ class GameSpaceApp(ctk.CTk):
         self.login_action_buttons: list[ctk.CTkButton] = []
         self.login_entries: dict[str, ctk.CTkEntry] = {}
         self.login_action_index = 0
+        self._content_wraplength = 620
 
         self.status_var = tk.StringVar(value="Ready.")
         self.username_var = tk.StringVar()
@@ -212,11 +214,13 @@ class GameSpaceApp(ctk.CTk):
             textvariable=self.status_var,
             anchor="w",
             justify="left",
-            wraplength=980,
+            wraplength=900,
             text_color=APP_TEXT,
             font=_font(18, bold=True),
         )
         self.status_label.pack(fill="x", padx=24, pady=(0, 16))
+
+        self.bind("<Configure>", self._on_window_resize, add="+")
 
         self._bind_global_keys()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -230,13 +234,31 @@ class GameSpaceApp(ctk.CTk):
     def _set_initial_window_size(self) -> None:
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
+        origin_x = 0
+        origin_y = 0
+
+        # On Windows, use work area so the taskbar does not cover the app.
+        if sys.platform.startswith("win"):
+            try:
+                import ctypes
+                from ctypes import wintypes
+
+                rect = wintypes.RECT()
+                SPI_GETWORKAREA = 0x0030
+                if ctypes.windll.user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(rect), 0):
+                    origin_x = rect.left
+                    origin_y = rect.top
+                    screen_width = rect.right - rect.left
+                    screen_height = rect.bottom - rect.top
+            except Exception:
+                pass
 
         width = max(720, min(screen_width - 40, int(screen_width * 0.96)))
         height = max(560, min(screen_height - 60, int(screen_height * 0.94)))
         min_width = min(960, width)
         min_height = min(640, height)
-        x = max(0, (screen_width - width) // 2)
-        y = max(0, (screen_height - height) // 2)
+        x = origin_x + max(0, (screen_width - width) // 2)
+        y = origin_y + max(0, (screen_height - height) // 2)
 
         self.geometry(f"{width}x{height}+{x}+{y}")
         self.minsize(min_width, min_height)
@@ -275,6 +297,38 @@ class GameSpaceApp(ctk.CTk):
     # updates status bar text at bottom
     def _set_status(self, text: str) -> None:
         self.status_var.set(f"Last message: {text}")
+
+    # keeps long labels wrapped inside current window width
+    def _on_window_resize(self, _event=None) -> None:
+        self._update_wraplengths()
+
+    # recalculates wraplengths for labels that can grow long
+    def _update_wraplengths(self) -> None:
+        width = max(720, self.winfo_width())
+        status_wrap = max(360, width - 120)
+        detail_wrap = max(320, width - 500)
+        login_wrap = max(320, width - 220)
+        nav_wrap = 220
+        self._content_wraplength = detail_wrap
+
+        try:
+            self.status_label.configure(wraplength=status_wrap)
+        except Exception:
+            pass
+
+        for attr, wrap in [
+            ("detail_body", detail_wrap),
+            ("_login_summary_label", login_wrap),
+            ("_nav_help_label", nav_wrap),
+            ("_apples_helper_label", detail_wrap),
+            ("_apples_status_label", detail_wrap),
+        ]:
+            widget = getattr(self, attr, None)
+            if widget is not None:
+                try:
+                    widget.configure(wraplength=wrap)
+                except Exception:
+                    pass
 
     # clears current page widgets + resets nav state
     def _clear_content(self) -> None:
@@ -632,6 +686,7 @@ class GameSpaceApp(ctk.CTk):
             font=_font(16, bold=True),
         )
         summary.pack(anchor="w", padx=24, pady=(0, 16))
+        self._login_summary_label = summary
 
         email_entry_widget: ctk.CTkEntry | None = None
         for field_name, var, label_text, hint, show in [
@@ -750,7 +805,8 @@ class GameSpaceApp(ctk.CTk):
         welcome.pack(anchor="w", padx=16, pady=(16, 10))
 
         nav_text = "Use Up/Down arrows to change pages. Press F6 to jump between the page list and the details pane."
-        ctk.CTkLabel(nav, text=nav_text, justify="left", wraplength=220, text_color=APP_MUTED, font=_font(15, bold=True)).pack(anchor="w", padx=16, pady=(0, 12))
+        self._nav_help_label = ctk.CTkLabel(nav, text=nav_text, justify="left", wraplength=220, text_color=APP_MUTED, font=_font(15, bold=True))
+        self._nav_help_label.pack(anchor="w", padx=16, pady=(0, 12))
 
         for key in self.menu_order:
             title = PAGE_META[key]["title"]
@@ -763,7 +819,7 @@ class GameSpaceApp(ctk.CTk):
         self.detail_title = ctk.CTkLabel(details, text="", text_color=APP_TEXT, font=_font(26, bold=True))
         self.detail_title.grid(row=0, column=0, sticky="w", padx=24, pady=(24, 8))
 
-        self.detail_body = ctk.CTkLabel(details, text="", wraplength=620, justify="left", anchor="w", text_color=APP_MUTED, font=_font(16, bold=True))
+        self.detail_body = ctk.CTkLabel(details, text="", wraplength=self._content_wraplength, justify="left", anchor="w", text_color=APP_MUTED, font=_font(16, bold=True))
         self.detail_body.grid(row=1, column=0, sticky="w", padx=24, pady=(0, 16))
 
         self.action_frame = ctk.CTkFrame(details)
@@ -776,6 +832,7 @@ class GameSpaceApp(ctk.CTk):
             "Main menu",
             "Use Up and Down arrows to choose a page. Press Right Arrow or Enter to activate. Press Left Arrow to go back. Press F6 to jump between panes.",
         )
+        self._update_wraplengths()
 
     # updates selected page + redraws details/actions
     def select_page(self, page_key: str, announce: bool = True) -> None:
@@ -825,7 +882,7 @@ class GameSpaceApp(ctk.CTk):
             text=text,
             justify="left",
             anchor="w",
-            wraplength=620,
+            wraplength=self._content_wraplength,
         )
         info.pack(fill="x", pady=6)
         self.action_widgets.append(info)
@@ -873,7 +930,7 @@ class GameSpaceApp(ctk.CTk):
         code_label = ctk.CTkLabel(
             self.action_frame,
             text="Room code — share this with your opponent when hosting, or enter theirs to join:",
-            justify="left", anchor="w", wraplength=620,
+            justify="left", anchor="w", wraplength=self._content_wraplength,
         )
         code_label.pack(anchor="w", pady=(0, 4))
         code_entry = ctk.CTkEntry(self.action_frame, textvariable=self.battleship_room_code_var, width=200, fg_color=APP_ENTRY_BG, border_color=APP_BORDER, text_color=APP_TEXT)
@@ -1013,7 +1070,7 @@ class GameSpaceApp(ctk.CTk):
             info = ctk.CTkLabel(
                 self.action_frame,
                 text="Scoreboard unavailable — Supabase is not configured.",
-                justify="left", anchor="w", wraplength=620,
+                justify="left", anchor="w", wraplength=self._content_wraplength,
             )
             info.pack(fill="x", pady=6)
             self.action_buttons = []
@@ -1079,7 +1136,7 @@ class GameSpaceApp(ctk.CTk):
             ctk.CTkLabel(
                 self.sb_display_frame,
                 text="No scores recorded yet. Play a game to be the first on the board!",
-                justify="left", anchor="w", wraplength=560,
+                justify="left", anchor="w", wraplength=max(280, self._content_wraplength - 40),
             ).pack(anchor="w", padx=8)
             self.speech.announce(f"No scores yet for {game_label}.", interrupt=True, force=True)
             return
@@ -1119,9 +1176,10 @@ class GameSpaceApp(ctk.CTk):
         helper = ctk.CTkLabel(
             self.action_frame,
             text="Create a local game code or join an existing one. After joining, refresh to hear the latest state.",
-            justify="left", anchor="w", wraplength=620,
+            justify="left", anchor="w", wraplength=self._content_wraplength,
         )
         helper.pack(fill="x", pady=(0, 10))
+        self._apples_helper_label = helper
 
         code_label = ctk.CTkLabel(self.action_frame, text="Game code")
         code_label.pack(anchor="w")
@@ -1158,7 +1216,7 @@ class GameSpaceApp(ctk.CTk):
             info = ctk.CTkLabel(
                 self.action_frame,
                 text="No current Apples game selected. Create a game or enter a code and join.",
-                justify="left", anchor="w", wraplength=620,
+                justify="left", anchor="w", wraplength=self._content_wraplength,
             )
             info.pack(fill="x", pady=(8, 0))
             return
@@ -1175,9 +1233,10 @@ class GameSpaceApp(ctk.CTk):
                 f"Code: {game['code']}\nPhase: {game['phase']}\nRound: {game['round_num']}\n"
                 f"Judge: {judge_name}\nPrompt: {game['green'] or '(none)'}\nLast update: {game['last_msg']}"
             ),
-            justify="left", anchor="w", wraplength=620,
+            justify="left", anchor="w", wraplength=self._content_wraplength,
         )
         status.pack(fill="x", pady=(8, 12))
+        self._apples_status_label = status
 
         ctk.CTkLabel(self.action_frame, text="Players", font=_font(18, bold=True)).pack(anchor="w")
         for player in roster:
@@ -1199,13 +1258,13 @@ class GameSpaceApp(ctk.CTk):
             return
 
         if not me:
-            ctk.CTkLabel(self.action_frame, text="You have not joined this Apples game yet.", justify="left", anchor="w", wraplength=620).pack(fill="x", pady=(12, 0))
+            ctk.CTkLabel(self.action_frame, text="You have not joined this Apples game yet.", justify="left", anchor="w", wraplength=self._content_wraplength).pack(fill="x", pady=(12, 0))
             return
 
         round_num = int(game["round_num"])
         if game["phase"] == "selecting":
             if is_judge:
-                ctk.CTkLabel(self.action_frame, text="You are the judge. Wait for all players to submit their cards, then refresh.", justify="left", anchor="w", wraplength=620).pack(fill="x", pady=(12, 0))
+                ctk.CTkLabel(self.action_frame, text="You are the judge. Wait for all players to submit their cards, then refresh.", justify="left", anchor="w", wraplength=self._content_wraplength).pack(fill="x", pady=(12, 0))
             else:
                 ctk.CTkLabel(self.action_frame, text="Your hand", font=_font(18, bold=True)).pack(anchor="w", pady=(12, 6))
                 hand = apples_service.get_hand(game_id, int(me["id"]))
@@ -1214,7 +1273,7 @@ class GameSpaceApp(ctk.CTk):
                     btn.pack(fill="x", pady=3)
                     self._register_action_button(btn, card)
                 selected_text = self.apples_selected_card or "No card selected."
-                ctk.CTkLabel(self.action_frame, text=f"Selected: {selected_text}", justify="left", anchor="w", wraplength=620).pack(fill="x", pady=(10, 6))
+                ctk.CTkLabel(self.action_frame, text=f"Selected: {selected_text}", justify="left", anchor="w", wraplength=self._content_wraplength).pack(fill="x", pady=(10, 6))
                 submit_button = self._add_action_button(
                     "Submit Selected Card",
                     lambda gid=game_id, rn=round_num, pid=int(me["id"]), jid=int(game["judge_pid"]): self._apples_submit_card(gid, rn, pid, jid),
@@ -1226,7 +1285,7 @@ class GameSpaceApp(ctk.CTk):
 
         if game["phase"] == "judging":
             if not is_judge:
-                ctk.CTkLabel(self.action_frame, text="Waiting for the judge to pick a winner. Press Refresh State to hear updates.", justify="left", anchor="w", wraplength=620).pack(fill="x", pady=(12, 0))
+                ctk.CTkLabel(self.action_frame, text="Waiting for the judge to pick a winner. Press Refresh State to hear updates.", justify="left", anchor="w", wraplength=self._content_wraplength).pack(fill="x", pady=(12, 0))
             else:
                 ctk.CTkLabel(self.action_frame, text="Judge submissions", font=_font(18, bold=True)).pack(anchor="w", pady=(12, 6))
                 submissions = apples_service.list_submissions(game_id, round_num)
@@ -1240,7 +1299,7 @@ class GameSpaceApp(ctk.CTk):
             return
 
         if game["phase"] == "game_over":
-            ctk.CTkLabel(self.action_frame, text="Game over. Review the scores above or create a new game.", justify="left", anchor="w", wraplength=620).pack(fill="x", pady=(12, 0))
+            ctk.CTkLabel(self.action_frame, text="Game over. Review the scores above or create a new game.", justify="left", anchor="w", wraplength=self._content_wraplength).pack(fill="x", pady=(12, 0))
 
     # gets current apples game from typed code
     def _current_apples_game(self):
