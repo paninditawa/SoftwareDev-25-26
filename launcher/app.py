@@ -259,6 +259,7 @@ class GameSpaceApp(ctk.CTk):
         self.bind_all("<Return>", self._handle_activate, add="+")
         self.bind_all("<KP_Enter>", self._handle_activate, add="+")
         self.bind_all("<space>", self._handle_activate, add="+")
+        self.bind_all("<Escape>", self._handle_escape, add="+")
 
     def _bind_tab_aliases(self, widget: tk.Widget) -> None:
         widget.bind("<Shift-Tab>", lambda event: self._handle_vertical(-1), add="+")
@@ -288,11 +289,10 @@ class GameSpaceApp(ctk.CTk):
         return "break"
 
     def _handle_escape(self, _event=None):
-        if self.current_screen == "menu" and self.current_page_key in self.nav_buttons:
-            self.nav_mode = True
-            self._sync_keyboard_focus()
-            return "break"
-        return None
+        self.speech.announce("Escape key was hit, so closing gamespace... Have a good day!", interrupt=True, force=True)
+        # Allow speech to start before the window is destroyed.
+        self.after(2000, self._on_close)
+        return "break"
 
     def _handle_left(self, _event=None):
         if self.current_screen != "menu":
