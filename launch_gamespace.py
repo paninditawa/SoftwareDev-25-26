@@ -13,14 +13,13 @@ REPO_ROOT = Path(__file__).resolve().parent
 
 
 def _resolve_target(relative_target: str) -> Path:
-    base = Path(getattr(sys, "_MEIPASS", REPO_ROOT))
-    return (base / relative_target).resolve()
+    return (REPO_ROOT / relative_target).resolve()
 
 
 def _run_target(relative_target: str, target_args: list[str]) -> None:
     target = _resolve_target(relative_target)
     if not target.exists():
-        raise FileNotFoundError(f"Missing bundled target: {target}")
+        raise FileNotFoundError(f"Missing target script: {target}")
 
     sys.argv = [str(target), *target_args]
     original_cwd = Path.cwd()
@@ -34,7 +33,7 @@ def _run_target(relative_target: str, target_args: list[str]) -> None:
 
 def _parse_args() -> tuple[argparse.Namespace, list[str]]:
     parser = argparse.ArgumentParser(description="HelloWorld GameSpace launcher")
-    parser.add_argument("--run-target", help="Run a bundled script relative to the app root")
+    parser.add_argument("--run-target", help="Run a script relative to the app root")
     return parser.parse_known_args()
 
 

@@ -1,7 +1,7 @@
-"""
-accessibility.py is a module that provides a SpeechManager class, which handles text-to-speech announcements for the app, 
-including screen changes & focus updates. It uses the tts helper for speech but falls back to print statements if TTS is unavailable. 
-SpeechManager can also track the current screen and focused control for context-aware announcements.
+"""Speech and focus announcements for the launcher UI.
+
+This module uses the project's required `tts` helper for spoken output and
+tracks screen/focus context so announcements are useful to keyboard users.
 """
 
 # annotations keep type hints as text until Python needs them
@@ -22,23 +22,9 @@ if str(_repo_root) not in sys.path:
     # add it so imports like tts can be found
     sys.path.insert(0, str(_repo_root))
 
-# import text-to-speech functions from project helper
-try:
-    # normal speech function
-    from tts import speak as _tts_speak
-
-    # interrupting speech function (cuts off current speech)
-    from tts import speak_interrupt as _tts_speak_interrupt
-
-# if TTS import fails, use print fallbacks
-except Exception:
-    # fallback function: show text on screen instead of speaking
-    def _tts_speak(text: str) -> None:
-        print(text)
-
-    # fallback interrupt function: also prints text
-    def _tts_speak_interrupt(text: str) -> None:
-        print(text)
+# import text-to-speech functions from the required project helper
+from tts import speak as _tts_speak
+from tts import speak_interrupt as _tts_speak_interrupt
 
 
 # SpeechManager manages spoken announcements for app

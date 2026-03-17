@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib.util
 import os
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -94,20 +93,12 @@ class AuthClient:
         if _is_usable_url(supabase_url) and _is_usable_supabase_key(supabase_anon_key):
             return cls(supabase_url.strip(), supabase_anon_key.strip())
 
-        executable_dir = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else None
         current_dir = Path.cwd()
 
         candidate_configs = [
             workspace_root / "supabase_project.py",
             workspace_root / "launcher" / "supabase_project.py",
         ]
-        if executable_dir is not None:
-            candidate_configs.extend(
-                [
-                    executable_dir / "supabase_project.py",
-                    executable_dir / "launcher" / "supabase_project.py",
-                ]
-            )
         candidate_configs.extend(
             [
                 current_dir / "supabase_project.py",

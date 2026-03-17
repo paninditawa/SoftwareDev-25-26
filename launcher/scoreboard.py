@@ -45,7 +45,7 @@ from typing import Any
 def _load_supabase_config(repo_root: Path) -> tuple[str, str]:
     """
     Return (supabase_url, anon_key) from supabase_project.py.
-    Raises RuntimeError if not configured.
+    Raises RuntimeError when required Supabase settings are missing.
     """
     candidates = [
         repo_root / "supabase_project.py",
@@ -60,7 +60,7 @@ def _load_supabase_config(repo_root: Path) -> tuple[str, str]:
     url = namespace.get("SUPABASE_URL", "").strip()
     key = namespace.get("SUPABASE_ANON_KEY", "").strip()
     if not url or not key or url.startswith("<"):
-        raise RuntimeError("Supabase not configured — scoreboard unavailable.")
+        raise RuntimeError("Supabase config is required for scoreboard.")
     return url, key
 
 
@@ -122,7 +122,7 @@ class Scoreboard:
         Increment the win counter for (user_id, game) by 1.
         Uses an upsert so the row is created on first win.
         The Supabase RPC approach avoids a read-modify-write race condition.
-        Falls back to a simple upsert if the RPC is not installed.
+        If the RPC is unavailable, it uses a read-then-upsert compatibility path.
         """
         # Try RPC first (atomic increment)
         rpc_url = self._base.replace(f"/rest/v1/{self.TABLE}", "/rest/v1/rpc/increment_wins")
@@ -137,7 +137,7 @@ class Scoreboard:
         except Exception:
             pass
 
-        # Fallback: fetch current wins then upsert with +1
+        # Compatibility path: fetch current wins then upsert with +1
         fetch_url = (
             f"{self._base}?user_id=eq.{user_id}&game=eq.{game}&select=wins"
         )
@@ -168,10 +168,8 @@ class Scoreboard:
             f"&order=wins.desc"
             f"&limit={limit}"
         )
-        try:
-            return _http("GET", url, self._read_headers()) or []
-        except Exception:
-            return []
+        rows = _http("GET", url, self._read_headers())
+        return rows or []
 
     def all_games_top(self, limit_per_game: int = 5) -> dict[str, list[dict]]:
         """
@@ -179,10 +177,7 @@ class Scoreboard:
         Returns {game_name: [rows]}
         """
         url = f"{self._base}?select=game,username,wins,updated_at&order=wins.desc&limit=200"
-        try:
-            rows = _http("GET", url, self._read_headers()) or []
-        except Exception:
-            return {}
+        rows = _http("GET", url, self._read_headers()) or []
 
         grouped: dict[str, list[dict]] = {}
         for row in rows:

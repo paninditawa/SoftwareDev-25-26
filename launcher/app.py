@@ -11,20 +11,12 @@ import customtkinter as ctk
 from launcher.accessibility import SpeechManager
 from launcher import apples_service
 from launcher.auth import AuthSession, AuthClient, AuthError
+from launcher.scoreboard import Scoreboard
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TESTING_DIR = REPO_ROOT / "testing"
 GAME_LOGIC_DIR = TESTING_DIR / "game_logic"
 BATTLESHIP_DIR = TESTING_DIR / "Battleship"
-
-# ---------------------------------------------------------------------------
-# Scoreboard (optional — degrades gracefully if Supabase not configured)
-# ---------------------------------------------------------------------------
-try:
-    from launcher.scoreboard import Scoreboard
-    _SCOREBOARD_AVAILABLE = True
-except ImportError:
-    _SCOREBOARD_AVAILABLE = False
 
 PAGE_META = {
     "home": {
@@ -121,13 +113,14 @@ class GameSpaceApp(ctk.CTk):
         self.configure(fg_color="#f2f5fb")
 
         self.auth_client = AuthClient.from_workspace(REPO_ROOT)
-        self.guest_mode = not self.auth_client.is_configured()
+        if not self.auth_client.is_configured():
+            raise RuntimeError("Supabase auth is required. Configure supabase_project.py before launching.")
         self.speech = SpeechManager(on_announce=self._set_status)
         self.auth_session: AuthSession | None = None
         self.server_process: subprocess.Popen | None = None
         self.current_screen = "startup"
         self.current_page_key = "home"
-        self.menu_order = [key for key in MENU_ORDER if key != "account"] if self.guest_mode else list(MENU_ORDER)
+        self.menu_order = list(MENU_ORDER)
         self.nav_index = self.menu_order.index("home")
         self.action_index = 0
         self.nav_mode = True
@@ -189,23 +182,9 @@ class GameSpaceApp(ctk.CTk):
 
         apples_service.init()
 
-        if self.guest_mode:
-            self.auth_session = AuthSession(
-                email="Guest Tester",
-                id_token="",
-                refresh_token="",
-                local_id="",
-                username="Guest Tester",
-            )
-            self.show_menu()
-        elif self.auth_client.is_configured():
-            self.show_login()
-        else:
-            self.show_config_error()
+        self.show_login()
 
     def _get_scoreboard(self) -> "Scoreboard | None":
-        if not _SCOREBOARD_AVAILABLE:
-            return None
         if self._scoreboard is None:
             try:
                 token = self.auth_session.id_token if self.auth_session else ""
@@ -216,7 +195,7 @@ class GameSpaceApp(ctk.CTk):
 
     def record_win(self, game: str) -> None:
         """Call this when the logged-in user wins a game."""
-        if self.guest_mode or self.auth_session is None:
+        if self.auth_session is None:
             return
         sb = self._get_scoreboard()
         if sb is None:
@@ -231,8 +210,6 @@ class GameSpaceApp(ctk.CTk):
             print(f"[scoreboard] record_win failed: {exc}")
 
     def _launcher_command(self, *extra_args: str) -> list[str]:
-        if getattr(sys, "frozen", False):
-            return [sys.executable, *extra_args]
         return [sys.executable, str(REPO_ROOT / "launch_gamespace.py"), *extra_args]
 
     def _set_status(self, text: str) -> None:
@@ -467,30 +444,6 @@ class GameSpaceApp(ctk.CTk):
             text = button.cget("text")
             self.speech.set_focus(text, "Press Enter to activate.")
 
-    def show_config_error(self) -> None:
-        self.current_screen = "config"
-        self._clear_content()
-        frame = ctk.CTkFrame(self.content)
-        frame.pack(fill="both", expand=True, padx=24, pady=24)
-        title = ctk.CTkLabel(frame, text="Auth Is Not Configured", font=ctk.CTkFont(size=24, weight="bold"))
-        title.pack(anchor="w", padx=24, pady=(24, 12))
-        message = ctk.CTkLabel(
-            frame,
-            text="Configure Supabase in supabase_project.py to enable account login.",
-            wraplength=780, justify="left", anchor="w",
-        )
-        message.pack(anchor="w", padx=24, pady=(0, 12))
-        paths = ctk.CTkLabel(
-            frame,
-            text=(
-                f"Supabase config locations:\n{REPO_ROOT / 'supabase_project.py'}\n"
-                f"{REPO_ROOT / 'launcher' / 'supabase_project.py'}"
-            ),
-            justify="left", anchor="w",
-        )
-        paths.pack(anchor="w", padx=24, pady=(0, 24))
-        self.speech.set_screen("Configuration error", "Auth is not configured.")
-
     def show_login(self) -> None:
         self.current_screen = "login"
         self._clear_content()
@@ -613,14 +566,12 @@ class GameSpaceApp(ctk.CTk):
         details.grid_columnconfigure(0, weight=1)
         details.grid_rowconfigure(2, weight=1)
 
-        mode_prefix = "Signed in as" if not self.guest_mode else "Testing as"
+        mode_prefix = "Signed in as"
         display_name = self.auth_session.username or self.auth_session.email
         welcome = ctk.CTkLabel(nav, text=f"{mode_prefix} {display_name}", wraplength=220, justify="left")
         welcome.pack(anchor="w", padx=16, pady=(16, 10))
 
         nav_text = "Use Up/Down arrows to change pages."
-        if self.guest_mode:
-            nav_text += " Account tools are hidden in guest tester mode."
         ctk.CTkLabel(nav, text=nav_text, justify="left", wraplength=220).pack(anchor="w", padx=16, pady=(0, 12))
 
         for key in self.menu_order:
@@ -685,54 +636,48 @@ class GameSpaceApp(ctk.CTk):
         self.action_widgets.append(button)
         self.action_buttons.append(button)
 
+    def _show_action_info(self, text: str) -> None:
+        info = ctk.CTkLabel(
+            self.action_frame,
+            text=text,
+            justify="left",
+            anchor="w",
+            wraplength=620,
+        )
+        info.pack(fill="x", pady=6)
+        self.action_widgets.append(info)
+        self.action_buttons = []
+
+    def _render_home_actions(self) -> None:
+        self._show_action_info(
+            "Choose a game or account option from the left menu. Use Up and Down arrows to navigate, Enter or Space to activate."
+        )
+
+    def _render_script_actions(self, page_key: str) -> None:
+        meta = PAGE_META[page_key]
+        self._add_action_button(
+            f"Launch {meta['title']}",
+            lambda path=meta["path"], title=meta["title"]: self._launch_script(path, title),
+            f"Activate to launch {meta['title']}.",
+        )
+
+    def _render_account_actions(self) -> None:
+        self._add_action_button("Sign Out", self._sign_out, "Activate to sign out and return to login.")
+
     def _render_actions(self, page_key: str) -> None:
         self._clear_actions()
-        meta = PAGE_META[page_key]
-        kind = meta["type"]
-
-        if kind == "home":
-            helper = ctk.CTkLabel(
-                self.action_frame,
-                text="Choose a game or account option from the left menu. Use Up and Down arrows to navigate, Enter or Space to activate.",
-                justify="left", anchor="w", wraplength=620,
-            )
-            helper.pack(fill="x", pady=6)
-            self.action_widgets.append(helper)
-            self.action_buttons = []
-            return
-
-        if kind == "script":
-            self._add_action_button(
-                f"Launch {meta['title']}",
-                lambda path=meta["path"], title=meta["title"]: self._launch_script(path, title),
-                f"Activate to launch {meta['title']}.",
-            )
-            return
-
-        if kind == "apples":
-            self._render_apples_actions()
-            return
-
-        if kind == "battleship":
-            self._render_battleship_actions()
-            return
-
-        if kind == "scoreboard":
-            self._render_scoreboard_actions()
-            return
-
-        if kind == "account":
-            if self.guest_mode:
-                info = ctk.CTkLabel(
-                    self.action_frame,
-                    text="Account actions are unavailable in guest tester mode.",
-                    justify="left", anchor="w", wraplength=620,
-                )
-                info.pack(fill="x", pady=6)
-                self.action_widgets.append(info)
-                self.action_buttons = []
-                return
-            self._add_action_button("Sign Out", self._sign_out, "Activate to sign out and return to login.")
+        kind = PAGE_META[page_key]["type"]
+        renderers = {
+            "home": self._render_home_actions,
+            "script": lambda: self._render_script_actions(page_key),
+            "apples": self._render_apples_actions,
+            "battleship": self._render_battleship_actions,
+            "scoreboard": self._render_scoreboard_actions,
+            "account": self._render_account_actions,
+        }
+        renderer = renderers.get(kind)
+        if renderer is not None:
+            renderer()
 
     def _render_battleship_actions(self) -> None:
         # Room-code display (host) or entry (join)
@@ -842,7 +787,7 @@ class GameSpaceApp(ctk.CTk):
             return
         import os
         env = os.environ.copy()
-        if self.auth_session and not self.guest_mode:
+        if self.auth_session:
             env["HW_USER_ID"]  = self.auth_session.local_id
             env["HW_USERNAME"] = self.auth_session.username or self.auth_session.email
         relative_target = script_path.relative_to(REPO_ROOT).as_posix()
@@ -1176,9 +1121,6 @@ class GameSpaceApp(ctk.CTk):
         self.speech.announce(f"Selected winning card: {winning_card}", interrupt=True, force=True)
 
     def _sign_out(self) -> None:
-        if self.guest_mode:
-            self.speech.announce("Guest tester mode has no sign out.", interrupt=True, force=True)
-            return
         self.auth_session = None
         self.speech.announce("Signed out.", interrupt=True, force=True)
         self.after_idle(self.show_login)

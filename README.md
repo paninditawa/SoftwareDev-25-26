@@ -83,21 +83,4 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 brew install sdl2 sdl2_image sdl2_mixer sdl2_ttf pkg-config
 ```
 
-## Build Windows Executable (Optional, Last Step)
-
-Use this only for demos, judging, or sharing with non-coders.
-
-From repo root in PowerShell:
-
-```powershell
-.\build_launcher.ps1 -Clean
-```
-
-Output folder:
-
-- dist/HelloWorldGameSpace
-
-Run:
-
-- dist/HelloWorldGameSpace/HelloWorldGameSpace.exe
 
