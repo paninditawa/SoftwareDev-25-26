@@ -287,9 +287,9 @@ class GameSpaceApp(ctk.CTk):
         return "break"
 
     def _handle_escape(self, _event=None):
-        self.speech.announce("Escape key was hit, so closing gamespace... Have a good day!", interrupt=True, force=True)
+        self.speech.announce("Escape key was hit, so closing gamespace... goodbye!", interrupt=True, force=True)
         # Allow speech to start before the window is destroyed.
-        self.after(2000, self._on_close)
+        self.after(5000, self._on_close)
         return "break"
 
     def _handle_left(self, _event=None):
