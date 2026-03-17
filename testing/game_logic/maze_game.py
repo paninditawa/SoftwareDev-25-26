@@ -69,6 +69,31 @@ class SpeechEngine:
         self._q.put(None)
 
 # ---------------------------------------------------------------------------
+# Scoreboard
+# ---------------------------------------------------------------------------
+
+def _report_win() -> None:
+    import os
+    user_id  = os.environ.get("HW_USER_ID",  "")
+    username = os.environ.get("HW_USERNAME", "")
+    if not user_id:
+        return
+    def _write():
+        try:
+            _repo_root = Path(__file__).resolve()
+            while _repo_root != _repo_root.parent:
+                if (_repo_root / "tts.py").exists():
+                    break
+                _repo_root = _repo_root.parent
+            sys.path.insert(0, str(_repo_root))
+            from launcher.scoreboard import Scoreboard
+            sb = Scoreboard.from_workspace(_repo_root)
+            sb.record_win(user_id, username, "maze")
+        except Exception as exc:
+            print(f"scoreboard write failed: {exc}")
+    threading.Thread(target=_write, daemon=True).start()
+
+# ---------------------------------------------------------------------------
 # Sound generation — produces tones with numpy, no external audio files needed.
 # ---------------------------------------------------------------------------
 def _make_tone(freq, duration, volume=0.5, wave='sine', fade=True):
@@ -298,6 +323,7 @@ class MazeGame:
                     if self.player == self.exit_pos:
                         self.won = True
                         self.snd_win.play()
+                        _report_win()
                         self.speech.speak(
                             f"Congratulations! You reached the exit in {self.moves} move{'s' if self.moves != 1 else ''}! "
                             "Press Enter for a new maze or Space to return to the menu.",

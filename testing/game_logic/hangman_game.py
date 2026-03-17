@@ -1,32 +1,9 @@
-
 import pygame
 import sys
 import random
 import math
 import time
 from pathlib import Path
-
-# import PyAudio as pyaudio
-# import speech_recognition as sr
-
-# # Initialize recognizer
-# r = sr.Recognizer()
-
-# # Use the default microphone as the audio source
-# with sr.Microphone() as source:
-#     print("Listening... please speak now.")
-#     r.adjust_for_ambient_noise(source)  # Optional: reduce background noise
-#     audio = r.listen(source)  # Capture the audio
-
-# try:
-#     # Recognize speech using Google Web Speech API
-#     text = r.recognize_google(audio)
-#     print("You said:", text)
-# except sr.UnknownValueError:
-#     print("Sorry, could not understand what you said.")
-# except sr.RequestError as e:
-#     print(f"Could not request results; check your internet connection. Error: {e}")
-
 
 WIDTH = 1000
 HEIGHT = 700
@@ -63,6 +40,31 @@ def speak(text):
 def speak_block(text):
     """Speak text and wait (backend-dependent behavior)."""
     _tts_speak(text)
+
+# -----------------------------
+# SCOREBOARD
+# -----------------------------
+
+def _report_win() -> None:
+    import os, threading
+    user_id  = os.environ.get("HW_USER_ID",  "")
+    username = os.environ.get("HW_USERNAME", "")
+    if not user_id:
+        return
+    def _write():
+        try:
+            _repo_root = Path(__file__).resolve()
+            while _repo_root != _repo_root.parent:
+                if (_repo_root / "tts.py").exists():
+                    break
+                _repo_root = _repo_root.parent
+            sys.path.insert(0, str(_repo_root))
+            from launcher.scoreboard import Scoreboard
+            sb = Scoreboard.from_workspace(_repo_root)
+            sb.record_win(user_id, username, "hangman")
+        except Exception as exc:
+            print(f"scoreboard write failed: {exc}")
+    threading.Thread(target=_write, daemon=True).start()
 
 class HangmanGame:
 
@@ -273,6 +275,7 @@ class HangmanGame:
         if won:
             self.state = "result"
             self.result = "win"
+            _report_win()
 
         if self.hangman == 6:
             self.state = "result"

@@ -838,8 +838,13 @@ class GameSpaceApp(ctk.CTk):
             self.speech.announce(message, interrupt=True, force=True)
             messagebox.showerror("Missing file", message)
             return
+        import os
+        env = os.environ.copy()
+        if self.auth_session and not self.guest_mode:
+            env["HW_USER_ID"]  = self.auth_session.local_id
+            env["HW_USERNAME"] = self.auth_session.username or self.auth_session.email
         relative_target = script_path.relative_to(REPO_ROOT).as_posix()
-        subprocess.Popen(self._launcher_command("--run-target", relative_target), cwd=str(REPO_ROOT))
+        subprocess.Popen(self._launcher_command("--run-target", relative_target), cwd=str(REPO_ROOT), env=env)
         self.speech.announce(f"Launching {title}.", interrupt=True, force=True)
 
     def _parse_port(self) -> int | None:

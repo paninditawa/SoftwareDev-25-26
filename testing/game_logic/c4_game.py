@@ -50,6 +50,32 @@ def speak(text):
     _tts_speak(text)
 
 # -----------------------------
+# SCOREBOARD
+# -----------------------------
+
+def _report_win(game_name: str) -> None:
+    # Read user identity from environment variables set by the launcher.
+    import os, threading
+    user_id  = os.environ.get("HW_USER_ID",  "")
+    username = os.environ.get("HW_USERNAME", "")
+    if not user_id:
+        return
+    def _write():
+        try:
+            _repo_root = Path(__file__).resolve()
+            while _repo_root != _repo_root.parent:
+                if (_repo_root / "tts.py").exists():
+                    break
+                _repo_root = _repo_root.parent
+            sys.path.insert(0, str(_repo_root))
+            from launcher.scoreboard import Scoreboard
+            sb = Scoreboard.from_workspace(_repo_root)
+            sb.record_win(user_id, username, game_name)
+        except Exception as exc:
+            print(f"scoreboard write failed: {exc}")
+    threading.Thread(target=_write, daemon=True).start()
+
+# -----------------------------
 # GAME LOGIC
 # -----------------------------
 def create_board():
@@ -170,7 +196,7 @@ def main():
         "Connect 4 is a two‑player game played on a grid with seven columns. "
         "On your turn, you choose a column number, and your piece drops to the lowest open space in that column. "
         "Your goal is to make a line of four of your pieces in a row: either 4 across, 4 up and down, or 4 diagonally. "
-        "I’ll tell you where each piece lands so you can track the board. "
+        "I'll tell you where each piece lands so you can track the board. "
         "Take turns placing pieces, and the first player to connect four wins. "
         "Use left and right arrow keys to move the selector. "
         "Press spacebar to drop your piece. "
@@ -231,6 +257,7 @@ def main():
                             if winning_move(board, turn):
                                 speak_block(f"Player {turn} wins in column {selector_col+1}.")
                                 game_over = True
+                                _report_win("connect4")
                                 speak_block("Press the up arrow key to restart game. Press the down arrow key to exit the game.")
                             else:
                                 turn = 2 if turn == 1 else 1
