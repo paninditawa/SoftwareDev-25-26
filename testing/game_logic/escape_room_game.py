@@ -70,6 +70,30 @@ def speak(text, interrupt=False):
     else:
         _tts_speak(text)
 
+# ---------------------------------------------------------------------------
+# Scoreboard
+# ---------------------------------------------------------------------------
+
+def _report_win() -> None:
+    import os
+    user_id  = os.environ.get("HW_USER_ID",  "")
+    username = os.environ.get("HW_USERNAME", "")
+    if not user_id:
+        return
+    def _write():
+        try:
+            _repo_root = Path(__file__).resolve()
+            while _repo_root != _repo_root.parent:
+                if (_repo_root / "tts.py").exists():
+                    break
+                _repo_root = _repo_root.parent
+            sys.path.insert(0, str(_repo_root))
+            from launcher.scoreboard import Scoreboard
+            sb = Scoreboard.from_workspace(_repo_root)
+            sb.record_win(user_id, username, "escape")
+        except Exception as exc:
+            print(f"scoreboard write failed: {exc}")
+    threading.Thread(target=_write, daemon=True).start()
 
 #the riddles
 
@@ -625,6 +649,7 @@ class EscapeRoomGame:
         self.completed.add(idx)
         self.state = "victory"
         self.snd_win.play()
+        _report_win()
         speak("You escaped " + self.current_level.name + "! Say continue for another level, or quit to exit.")
 
     def _handle_playing(self, cmd):

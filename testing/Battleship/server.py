@@ -1,54 +1,64 @@
+"""
+Battleship server — EchoFleet
+Auto-shuts down once both players have disconnected (no orphan processes).
+"""
+from __future__ import annotations
+
+import argparse
+import os
 import socket
 import threading
 import traceback
-from game import Game, SHIPS
 
-import argparse
+from game import Game, SHIPS
 
 HOST = "0.0.0.0"
 PORT = 5555
 
 game = Game()
-connections = [None, None]
+connections: list[socket.socket | None] = [None, None]
 lock = threading.Lock()
 
-# The game can be reset for a rematch after win/lose.
 game_over = False
-rematch_requests = set()
+rematch_requests: set[int] = set()
+
+# Track how many players are currently connected so we know when to shut down.
+connected_count = 0
+connected_lock  = threading.Lock()
 
 
-def parse_args():
-    p = argparse.ArgumentParser(description="Battleship server")
-    p.add_argument("--host", default=HOST, help="Host to bind to (0.0.0.0 for all interfaces)")
-    p.add_argument("--port", type=int, default=PORT, help="Port to listen on")
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="EchoFleet Battleship server")
+    p.add_argument("--host", default=HOST)
+    p.add_argument("--port", type=int, default=PORT)
     return p.parse_args()
 
 
-def _send(player_id: int, message: str):
+def _send(player_id: int, message: str) -> None:
     conn = connections[player_id]
     if not conn:
         return
     try:
-        print(f"send({player_id}): {message}")
         conn.sendall((message + "\n").encode())
     except Exception:
         pass
 
 
-def broadcast(message: str):
+def broadcast(message: str) -> None:
     for i in range(2):
         _send(i, message)
 
 
-def handle_client(conn, player_id: int):
-    global game, game_over, rematch_requests
+def handle_client(conn: socket.socket, player_id: int) -> None:
+    global game, game_over, rematch_requests, connected_count
+
     connections[player_id] = conn
     _send(player_id, f"PLAYER {player_id}")
-    _send(player_id, "INFO Place ships using: PLACE <ship> <row> <col> <H/V> then READY when done.")
+    _send(player_id, "INFO Place ships: PLACE <ship_index> <row> <col> <H/V> then READY.")
 
     buffer = ""
-    while True:
-        try:
+    try:
+        while True:
             data = conn.recv(1024).decode()
             if not data:
                 break
@@ -60,36 +70,31 @@ def handle_client(conn, player_id: int):
                     continue
 
                 parts = line.split()
-                cmd = parts[0].upper()
-                print(f"recv({player_id}): {line}")
+                cmd   = parts[0].upper()
 
                 if cmd == "PLACE" and len(parts) >= 5:
-                    # Support either "PLACE <ship_index> <row> <col> <orient>" or
-                    # "PLACE <ship name> <row> <col> <orient>" (where ship name may include spaces).
-                    row = parts[-3]
-                    col = parts[-2]
-                    orient = parts[-1]
-                    ship_id_or_name = " ".join(parts[1:-3])
+                    row_str    = parts[-3]
+                    col_str    = parts[-2]
+                    orient_str = parts[-1]
+                    ship_token = " ".join(parts[1:-3])
                     try:
-                        row_i = int(row)
-                        col_i = int(col)
+                        row_i = int(row_str)
+                        col_i = int(col_str)
                     except ValueError:
                         _send(player_id, "PLACE_ERR Invalid coordinates")
                         continue
 
-                    # Accept either a ship index (0-4) or a ship name.
-                    ship_name = None
+                    ship_name: str | None = None
                     try:
-                        ship_index = int(ship_id_or_name)
-                        if 0 <= ship_index < len(SHIPS):
-                            ship_name = SHIPS[ship_index][0]
+                        idx = int(ship_token)
+                        if 0 <= idx < len(SHIPS):
+                            ship_name = SHIPS[idx][0]
                     except ValueError:
                         pass
-
                     if ship_name is None:
-                        ship_name = ship_id_or_name
+                        ship_name = ship_token
 
-                    ok, msg = game.place_ship(player_id, ship_name, row_i, col_i, orient)
+                    ok, msg = game.place_ship(player_id, ship_name, row_i, col_i, orient_str)
                     if ok:
                         _send(player_id, "PLACE_OK")
                         if len(game.ships[player_id]) == len(SHIPS):
@@ -111,24 +116,6 @@ def handle_client(conn, player_id: int):
                     else:
                         _send(player_id, f"READY_ERR {msg}")
 
-                elif cmd == "REMATCH":
-                    if not game_over:
-                        _send(player_id, "ERROR Not in game-over state")
-                    else:
-                        rematch_requests.add(player_id)
-                        _send(player_id, "REMATCH_OK")
-                        # When both players request rematch, reset game state.
-                        if len(rematch_requests) == 2:
-                            game = Game()
-                            game_over = False
-                            rematch_requests.clear()
-                            broadcast("RESET")
-                            broadcast("INFO Place ships using: PLACE <ship> <row> <col> <H/V> then READY when done.")
-
-                elif cmd == "QUIT":
-                    # Client is quitting; close the connection.
-                    break
-
                 elif cmd == "FIRE" and len(parts) == 3:
                     try:
                         row_i = int(parts[1])
@@ -140,76 +127,92 @@ def handle_client(conn, player_id: int):
                     result = game.process_fire(player_id, row_i, col_i)
                     status = result.get("status")
 
-                    if status == "WAIT":
-                        _send(player_id, "RESULT WAIT")
+                    if status in ("WAIT", "NOT_READY"):
+                        _send(player_id, f"RESULT {status}")
                         continue
-
-                    if status == "NOT_READY":
-                        _send(player_id, "RESULT NOT_READY")
-                        continue
-
                     if status == "USED":
                         _send(player_id, "RESULT USED")
                         continue
-
                     if status == "MISS":
-                        _send(player_id, f"RESULT MISS {row_i} {col_i}")
+                        _send(player_id,     f"RESULT MISS {row_i} {col_i}")
                         _send(1 - player_id, f"OPPONENT_FIRE {row_i} {col_i} MISS")
                         _send(1 - player_id, "YOUR_TURN")
-                        _send(player_id, "OPPONENT_TURN")
+                        _send(player_id,     "OPPONENT_TURN")
                         continue
-
                     if status == "HIT":
                         ship = result.get("ship", "Ship")
                         sunk = result.get("sunk", False)
-                        win = result.get("win", False)
-                        _send(player_id, f"RESULT HIT {row_i} {col_i} {ship} {sunk}")
+                        win  = result.get("win",  False)
+                        _send(player_id,     f"RESULT HIT {row_i} {col_i} {ship} {sunk}")
                         _send(1 - player_id, f"OPPONENT_FIRE {row_i} {col_i} HIT {ship} {sunk}")
                         if win:
                             game_over = True
                             rematch_requests.clear()
-                            _send(player_id, "WIN")
-                            _send(1 - player_id, "LOSE")
+                            _send(player_id,     "RESULT WIN")
+                            _send(1 - player_id, "RESULT LOSE")
                         else:
                             _send(1 - player_id, "YOUR_TURN")
-                            _send(player_id, "OPPONENT_TURN")
+                            _send(player_id,     "OPPONENT_TURN")
                         continue
+
+                elif cmd == "REMATCH":
+                    if not game_over:
+                        _send(player_id, "ERROR Not in game-over state")
+                    else:
+                        rematch_requests.add(player_id)
+                        _send(player_id, "REMATCH_OK")
+                        if len(rematch_requests) == 2:
+                            game = Game()
+                            game_over = False
+                            rematch_requests.clear()
+                            broadcast("RESET")
+
+                elif cmd == "QUIT":
+                    break
 
                 else:
                     _send(player_id, "ERROR Unknown command")
 
-        except Exception as e:
-            print(f"Exception in client handler ({player_id}):", e)
-            traceback.print_exc()
-            try:
-                _send(player_id, f"ERROR {e}")
-            except Exception:
-                pass
-            break
+    except Exception as exc:
+        print(f"[server] error in handler for player {player_id}: {exc}")
+        traceback.print_exc()
 
-    conn.close()
-    connections[player_id] = None
+    finally:
+        conn.close()
+        connections[player_id] = None
+        print(f"[server] player {player_id} disconnected.")
+
+        with connected_lock:
+            connected_count -= 1
+            remaining = connected_count
+
+        if remaining == 0:
+            print("[server] both players disconnected — shutting down.")
+            os._exit(0)
 
 
-def start(host: str, port: int):
+def start(host: str, port: int) -> None:
+    global connected_count
+
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
     try:
         server.bind((host, port))
     except OSError as e:
-        raise SystemExit(
-            f"Failed to bind {host}:{port} - {e}.\n"
-            "Ensure no other server is running on that port, or use --port to pick a different one."
-        )
+        raise SystemExit(f"Failed to bind {host}:{port} — {e}")
 
     server.listen(2)
-    print(f"Server running on {host}:{port} (0.0.0.0 binds everywhere)")
+    print(f"[server] listening on {host}:{port}")
 
     for player_id in range(2):
         conn, addr = server.accept()
-        print("Player connected:", addr)
-        threading.Thread(target=handle_client, args=(conn, player_id)).start()
+        print(f"[server] player {player_id} connected from {addr}")
+        with connected_lock:
+            connected_count += 1
+        threading.Thread(target=handle_client, args=(conn, player_id), daemon=True).start()
+
+    # Keep the main thread alive (the daemon threads do the real work).
+    threading.Event().wait()
 
 
 if __name__ == "__main__":
