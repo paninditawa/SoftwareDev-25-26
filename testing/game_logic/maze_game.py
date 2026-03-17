@@ -28,11 +28,11 @@ SAMPLE_RATE = 44100
 # --- Colors ---
 WHITE  = (255, 255, 255)
 BLACK  = (0,   0,   0)
-BLUE   = (70,  130, 180)
-GREEN  = (50,  200,  50)
-YELLOW = (255, 215,   0)
-GRAY   = (100, 100, 100)
-DARK   = (20,   20,  20)
+BLUE   = (14,  92, 168)
+GREEN  = (0,  126, 106)
+YELLOW = (255, 191,  71)
+GRAY   = (208, 218, 230)
+DARK   = (18,   24,  33)
 
 SCREEN_W, SCREEN_H = 820, 720
 
@@ -157,9 +157,9 @@ class SizeSelectScreen:
         self.min_sz  = 5
         self.max_sz  = 25
         self.done    = False
-        self.font    = pygame.font.SysFont(None, 36)
-        self.big     = pygame.font.SysFont(None, 64)
-        self.small   = pygame.font.SysFont(None, 28)
+        self.font    = pygame.font.SysFont(None, 40, bold=True)
+        self.big     = pygame.font.SysFont(None, 70, bold=True)
+        self.small   = pygame.font.SysFont(None, 32, bold=True)
         self.speech.speak(
             "Welcome to Accessible Maze Game. "
             "Use the UP and DOWN arrow keys to choose your maze size. "
@@ -197,7 +197,7 @@ class SizeSelectScreen:
         title = self.big.render("Accessible Maze", True, YELLOW)
         self.screen.blit(title, (w//2 - title.get_width()//2, 80))
 
-        sub = self.font.render("A game for the visually impaired", True, GRAY)
+        sub = self.font.render("A game for the visually impaired", True, WHITE)
         self.screen.blit(sub, (w//2 - sub.get_width()//2, 155))
 
         size_txt = self.big.render(f"Size: {self.size} x {self.size}", True, GREEN)
@@ -239,9 +239,9 @@ class MazeGame:
         self.cols    = cols
         self.rows    = rows
         self.tile    = min(680 // max(cols, rows), 56)
-        self.font    = pygame.font.SysFont(None, 28)
-        self.big     = pygame.font.SysFont(None, 52)
-        self.small   = pygame.font.SysFont(None, 24)
+        self.font    = pygame.font.SysFont(None, 32, bold=True)
+        self.big     = pygame.font.SysFont(None, 56, bold=True)
+        self.small   = pygame.font.SysFont(None, 28, bold=True)
 
         # Sounds
         self.snd_move    = _make_tone(520,  0.09)
@@ -346,8 +346,8 @@ class MazeGame:
         oy = 40 + (SCREEN_H - 80 - self.rows * t) // 2
 
         # --- Maze rendering: floor + explicit walls ---
-        WALL_COLOR  = (210, 210, 210)
-        FLOOR_COLOR = (40, 40, 40)
+        WALL_COLOR  = (232, 238, 245)
+        FLOOR_COLOR = (38, 48, 64)
         WALL_W      = max(2, t // 6)
 
         # Draw all cell floors
@@ -377,6 +377,7 @@ class MazeGame:
         ex = ox + self.exit_pos[0] * t
         ey = oy + self.exit_pos[1] * t
         pygame.draw.rect(self.screen, GREEN, (ex+3, ey+3, t-6, t-6))
+        pygame.draw.rect(self.screen, WHITE, (ex+3, ey+3, t-6, t-6), 3)
         lbl = self.small.render("EXIT", True, BLACK)
         self.screen.blit(lbl, (ex + t//2 - lbl.get_width()//2, ey + t//2 - lbl.get_height()//2))
 
@@ -384,6 +385,9 @@ class MazeGame:
         px = ox + self.player[0] * t
         py = oy + self.player[1] * t
         pygame.draw.circle(self.screen, BLUE, (px + t//2, py + t//2), t//2 - 3)
+        pygame.draw.circle(self.screen, WHITE, (px + t//2, py + t//2), t//2 - 3, 3)
+        you = self.small.render("YOU", True, WHITE)
+        self.screen.blit(you, (px + t//2 - you.get_width()//2, py + t//2 - you.get_height()//2))
 
         # HUD top
         hud = self.small.render(

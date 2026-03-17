@@ -113,6 +113,30 @@ SCOREBOARD_GAMES = [
     ("apples",     "Apples to Apples"),
 ]
 
+# custom simplified palette (contrast-first, microsoft-style structure)
+APP_BG = "#f6f8fb"
+APP_PANEL = "#ffffff"
+APP_PANEL_ALT = "#edf2f7"
+APP_BORDER = "#5c7085"
+APP_TEXT = "#0f2942"
+APP_MUTED = "#27445f"
+APP_ACCENT = "#0b5cab"
+APP_ACCENT_STRONG = "#084c8d"
+APP_ACCENT_SOFT = APP_ACCENT
+APP_FOCUS = "#ffd54a"
+APP_BUTTON = APP_ACCENT
+APP_BUTTON_HOVER = APP_ACCENT_STRONG
+APP_BUTTON_TEXT = "#ffffff"
+APP_ENTRY_BG = APP_PANEL
+APP_ROW_HIGHLIGHT = "#e7f1fa"
+
+APP_BUTTON_H = 44
+APP_FONT_FAMILY = "Segoe UI"
+
+
+def _font(size: int, bold: bool = False) -> ctk.CTkFont:
+    return ctk.CTkFont(family=APP_FONT_FAMILY, size=size, weight="bold" if bold else "normal")
+
 # main launcher window + shared app state
 class GameSpaceApp(ctk.CTk):
     # sets up window + shared launcher state
@@ -122,9 +146,8 @@ class GameSpaceApp(ctk.CTk):
         ctk.set_default_color_theme("dark-blue")
 
         self.title("HelloWorld GameSpace Launcher")
-        self.geometry("1080x720")
-        self.minsize(960, 640)
-        self.configure(fg_color="#f2f5fb")
+        self._set_initial_window_size()
+        self.configure(fg_color=APP_BG)
 
         self.auth_client = AuthClient.from_workspace(REPO_ROOT)
 
@@ -145,6 +168,7 @@ class GameSpaceApp(ctk.CTk):
         self.action_widgets: list[tk.Widget] = []
         self.action_buttons: list[ctk.CTkButton] = []
         self.login_action_buttons: list[ctk.CTkButton] = []
+        self.login_entries: dict[str, ctk.CTkEntry] = {}
         self.login_action_index = 0
 
         self.status_var = tk.StringVar(value="Ready.")
@@ -167,20 +191,20 @@ class GameSpaceApp(ctk.CTk):
         self.header = ctk.CTkLabel(
             self,
             text="HelloWorld GameSpace",
-            text_color="#123a66",
-            font=ctk.CTkFont(size=30, weight="bold"),
+            text_color=APP_TEXT,
+            font=_font(30, bold=True),
         )
         self.header.pack(fill="x", padx=24, pady=(20, 10))
 
         self.subheader = ctk.CTkLabel(
             self,
             text="Keyboard-first, blind-accessible launcher",
-            text_color="#4d6785",
-            font=ctk.CTkFont(size=15),
+            text_color=APP_MUTED,
+            font=_font(18, bold=True),
         )
         self.subheader.pack(fill="x", padx=24, pady=(0, 10))
 
-        self.content = ctk.CTkFrame(self, fg_color="#ffffff", corner_radius=16)
+        self.content = ctk.CTkFrame(self, fg_color=APP_PANEL, corner_radius=16, border_width=1, border_color=APP_BORDER)
         self.content.pack(fill="both", expand=True, padx=24, pady=(0, 12))
 
         self.status_label = ctk.CTkLabel(
@@ -189,8 +213,8 @@ class GameSpaceApp(ctk.CTk):
             anchor="w",
             justify="left",
             wraplength=980,
-            text_color="#244567",
-            font=ctk.CTkFont(size=15, weight="bold"),
+            text_color=APP_TEXT,
+            font=_font(18, bold=True),
         )
         self.status_label.pack(fill="x", padx=24, pady=(0, 16))
 
@@ -201,6 +225,21 @@ class GameSpaceApp(ctk.CTk):
 
         # first screen always login
         self.show_login()
+
+    # sizes window from current screen size + keeps resize flexible
+    def _set_initial_window_size(self) -> None:
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+
+        width = max(720, min(screen_width - 40, int(screen_width * 0.96)))
+        height = max(560, min(screen_height - 60, int(screen_height * 0.94)))
+        min_width = min(960, width)
+        min_height = min(640, height)
+        x = max(0, (screen_width - width) // 2)
+        y = max(0, (screen_height - height) // 2)
+
+        self.geometry(f"{width}x{height}+{x}+{y}")
+        self.minsize(min_width, min_height)
 
     # gets scoreboard client + creates once when needed
     def _get_scoreboard(self) -> "Scoreboard | None":
@@ -260,6 +299,11 @@ class GameSpaceApp(ctk.CTk):
         self.bind_all("<KP_Enter>", self._handle_activate, add="+")
         self.bind_all("<space>", self._handle_activate, add="+")
         self.bind_all("<Escape>", self._handle_escape, add="+")
+        self.bind_all("<F1>", self._handle_help, add="+")
+        self.bind_all("<F2>", self._handle_repeat, add="+")
+        self.bind_all("<F6>", lambda event: self._handle_pane_cycle(1), add="+")
+        self.bind_all("<Shift-F6>", lambda event: self._handle_pane_cycle(-1), add="+")
+        self.bind_all("<F7>", self._handle_where_am_i, add="+")
 
     # makes tab keys act like vertical navigation keys
     def _bind_tab_aliases(self, widget: tk.Widget) -> None:
@@ -297,6 +341,24 @@ class GameSpaceApp(ctk.CTk):
         self.speech.announce("Escape key was hit, so closing gamespace... goodbye!", interrupt=True, force=True)
         # short delay so tts starts before app closes
         self.after(5000, self._on_close)
+        return "break"
+
+    # lets F6 jump between major launcher panes
+    def _handle_pane_cycle(self, _delta: int):
+        if self.current_screen != "menu":
+            return None
+
+        focus = self.focus_get()
+        in_nav_pane = focus in self.nav_buttons.values()
+
+        if in_nav_pane:
+            if self._focus_first_action_target():
+                return "break"
+            self.speech.announce("No interactive controls are available in the details pane.", interrupt=True, force=True)
+            return "break"
+
+        self.nav_mode = True
+        self._sync_keyboard_focus()
         return "break"
 
     # moves keyboard mode back to left menu column
@@ -438,7 +500,7 @@ class GameSpaceApp(ctk.CTk):
     def _style_login_buttons(self) -> None:
         for index, button in enumerate(self.login_action_buttons):
             if index == self.login_action_index:
-                button.configure(border_width=2, border_color="#f2b134")
+                button.configure(border_width=3, border_color=APP_FOCUS)
             else:
                 button.configure(border_width=0)
 
@@ -451,25 +513,77 @@ class GameSpaceApp(ctk.CTk):
         button.focus_set()
         self.speech.set_focus(button.cget("text"), "Press Enter to activate.")
 
+    # moves cursor back into one login field
+    def _focus_login_entry(self, field_name: str) -> None:
+        entry = self.login_entries.get(field_name)
+        if entry is None:
+            return
+        entry.focus_set()
+        entry.icursor("end")
+
+    # moves focus into first usable control in the details pane
+    def _focus_first_action_target(self) -> bool:
+        for widget in self.action_widgets:
+            if widget is None:
+                continue
+            try:
+                if not widget.winfo_exists():
+                    continue
+            except Exception:
+                continue
+
+            if self._is_text_entry(widget):
+                widget.focus_set()
+                return True
+
+            if hasattr(widget, "invoke"):
+                try:
+                    if str(widget.cget("state")) == "disabled":
+                        continue
+                except Exception:
+                    pass
+                if widget in self.action_buttons:
+                    self.nav_mode = False
+                    self.action_index = self.action_buttons.index(widget)
+                    self._sync_keyboard_focus()
+                else:
+                    widget.focus_set()
+                return True
+
+        return False
+
+    # returns shared button styling for accessible contrast + sizing
+    def _button_style_kwargs(self) -> dict[str, object]:
+        kwargs: dict[str, object] = {
+            "height": APP_BUTTON_H,
+            "text_color": APP_BUTTON_TEXT,
+            "fg_color": APP_BUTTON,
+            "hover_color": APP_BUTTON_HOVER,
+            "font": _font(16, bold=True),
+            "border_width": 1,
+            "border_color": APP_BORDER,
+        }
+        return kwargs
+
     # styles left nav button by selected/active state
     def _style_nav_button(self, key: str, button: ctk.CTkButton) -> None:
         selected = key == self.current_page_key
         keyboard_cursor = self.nav_mode and selected
         if keyboard_cursor:
-            button.configure(fg_color="#0f4f8c", border_width=2, border_color="#f2b134")
+            button.configure(fg_color=APP_ACCENT_STRONG, border_width=3, border_color=APP_FOCUS)
         elif selected:
-            button.configure(fg_color="#1f6aa5", border_width=0)
+            button.configure(fg_color=APP_ACCENT, border_width=2, border_color=APP_BORDER)
         else:
-            button.configure(fg_color=("#3B8ED0", "#1F6AA5"), border_width=0)
+            button.configure(fg_color=(APP_ACCENT_SOFT, APP_ACCENT), border_width=1, border_color=APP_BORDER)
 
     # styles right action buttons by selected/active state
     def _style_action_buttons(self) -> None:
         for index, button in enumerate(self.action_buttons):
             keyboard_cursor = (not self.nav_mode) and index == self.action_index
             if keyboard_cursor:
-                button.configure(border_width=2, border_color="#f2b134")
+                button.configure(border_width=3, border_color=APP_FOCUS)
             else:
-                button.configure(border_width=0)
+                button.configure(border_width=1, border_color=APP_BORDER)
 
     # syncs keyboard focus with nav/action selection state
     def _sync_keyboard_focus(self) -> None:
@@ -496,6 +610,7 @@ class GameSpaceApp(ctk.CTk):
         # rebuild login ui from scratch each time
         self.current_screen = "login"
         self._clear_content()
+        self.login_entries = {}
         self.username_var = tk.StringVar()
         self.email_var = tk.StringVar()
         self.password_var = tk.StringVar()
@@ -503,30 +618,33 @@ class GameSpaceApp(ctk.CTk):
         wrapper = ctk.CTkFrame(self.content, fg_color="transparent")
         wrapper.pack(expand=True)
 
-        card = ctk.CTkFrame(wrapper, width=560, fg_color="#ffffff", corner_radius=14, border_width=1, border_color="#d7e3f2")
+        card = ctk.CTkFrame(wrapper, width=560, fg_color=APP_PANEL, corner_radius=14, border_width=2, border_color=APP_BORDER)
         card.pack(padx=40, pady=40)
 
-        title = ctk.CTkLabel(card, text="Sign In to HelloWorld GameSpace", font=ctk.CTkFont(size=24, weight="bold"))
+        title = ctk.CTkLabel(card, text="Sign In to HelloWorld GameSpace", text_color=APP_TEXT, font=_font(28, bold=True))
         title.pack(anchor="w", padx=24, pady=(24, 8))
 
         summary = ctk.CTkLabel(
             card,
             text="Use Up and Down arrows to move between buttons. Username is required when creating a new account.",
             wraplength=460, justify="left", anchor="w",
+            text_color=APP_MUTED,
+            font=_font(16, bold=True),
         )
         summary.pack(anchor="w", padx=24, pady=(0, 16))
 
         email_entry_widget: ctk.CTkEntry | None = None
-        for var, label_text, hint, show in [
-            (self.username_var, "Username (for new accounts)", "Type a username when creating a new account.", ""),
-            (self.email_var,    "Email",                       "Type your account email address.",             ""),
-            (self.password_var, "Password",                    "Type your password.",                          "*"),
+        for field_name, var, label_text, hint, show in [
+            ("username", self.username_var, "Username (for new accounts)", "Type a username when creating a new account.", ""),
+            ("email", self.email_var,       "Email",                       "Type your account email address.",             ""),
+            ("password", self.password_var, "Password",                    "Type your password.",                          "*"),
         ]:
-            ctk.CTkLabel(card, text=label_text).pack(anchor="w", padx=24)
-            entry = ctk.CTkEntry(card, textvariable=var, width=460, show=show)
+            ctk.CTkLabel(card, text=label_text, text_color=APP_TEXT, font=_font(15, bold=True)).pack(anchor="w", padx=24)
+            entry = ctk.CTkEntry(card, textvariable=var, width=460, height=42, show=show, fg_color=APP_ENTRY_BG, border_color=APP_BORDER, text_color=APP_TEXT)
             entry.pack(padx=24, pady=(4, 16))
             self.speech.bind_focus(entry, f"{label_text} field", hint)
-            if var is self.email_var:
+            self.login_entries[field_name] = entry
+            if field_name == "email":
                 # keep ref so cursor starts in email field
                 email_entry_widget = entry
 
@@ -534,15 +652,15 @@ class GameSpaceApp(ctk.CTk):
         button_row.pack(fill="x", padx=24, pady=(0, 12))
         button_row.grid_columnconfigure((0, 1), weight=1)
 
-        sign_in_button = ctk.CTkButton(button_row, text="Sign In", command=self._sign_in)
+        sign_in_button = ctk.CTkButton(button_row, text="Sign In", command=self._sign_in, **self._button_style_kwargs())
         sign_in_button.grid(row=0, column=0, padx=(0, 8), sticky="ew")
         self._register_login_button(sign_in_button, "Sign In button", "Activate to sign in.")
 
-        create_button = ctk.CTkButton(button_row, text="Create Account", command=self._sign_up)
+        create_button = ctk.CTkButton(button_row, text="Create Account", command=self._sign_up, **self._button_style_kwargs())
         create_button.grid(row=0, column=1, padx=(8, 0), sticky="ew")
         self._register_login_button(create_button, "Create Account button", "Activate to create a new account.")
 
-        help_button = ctk.CTkButton(card, text="Read Login Help", command=self._handle_help)
+        help_button = ctk.CTkButton(card, text="Read Login Help", command=self._handle_help, **self._button_style_kwargs())
         help_button.pack(padx=24, pady=(0, 24), fill="x")
         self._register_login_button(help_button, "Read Login Help button", "Activate to hear login instructions.")
 
@@ -573,14 +691,17 @@ class GameSpaceApp(ctk.CTk):
         if not email or not password:
             self.speech.announce("Email and password are required.", interrupt=True, force=True)
             messagebox.showerror("Missing information", "Email and password are required.")
+            self.after_idle(lambda: self._focus_login_entry("email" if not email else "password"))
             return
         if len(password) < 6:
             self.speech.announce("Password must be at least 6 characters.", interrupt=True, force=True)
             messagebox.showerror("Password too short", "Password must be at least 6 characters.")
+            self.after_idle(lambda: self._focus_login_entry("password"))
             return
         if action == "sign_up" and not username:
             self.speech.announce("Username is required to create an account.", interrupt=True, force=True)
             messagebox.showerror("Missing username", "Username is required to create an account.")
+            self.after_idle(lambda: self._focus_login_entry("username"))
             return
         try:
             if action == "sign_in":
@@ -592,6 +713,7 @@ class GameSpaceApp(ctk.CTk):
         except AuthError as exc:
             self.speech.announce(str(exc), interrupt=True, force=True)
             messagebox.showerror("Authentication error", str(exc))
+            self.after_idle(lambda: self._focus_login_entry("password" if password else "email"))
             return
         self.show_menu()
 
@@ -613,35 +735,35 @@ class GameSpaceApp(ctk.CTk):
         root.grid_columnconfigure(1, weight=1)
         root.grid_rowconfigure(0, weight=1)
 
-        nav = ctk.CTkFrame(root, width=300, fg_color="#eef4fb", corner_radius=14)
+        nav = ctk.CTkFrame(root, width=300, fg_color=APP_PANEL_ALT, corner_radius=14, border_width=1, border_color=APP_BORDER)
         nav.grid(row=0, column=0, sticky="nsw", padx=(16, 8), pady=16)
         nav.grid_propagate(False)
 
-        details = ctk.CTkFrame(root, fg_color="#ffffff", corner_radius=14, border_width=1, border_color="#d7e3f2")
+        details = ctk.CTkFrame(root, fg_color=APP_PANEL, corner_radius=14, border_width=2, border_color=APP_BORDER)
         details.grid(row=0, column=1, sticky="nsew", padx=(8, 16), pady=16)
         details.grid_columnconfigure(0, weight=1)
         details.grid_rowconfigure(2, weight=1)
 
         mode_prefix = "Signed in as"
         display_name = self.auth_session.username or self.auth_session.email
-        welcome = ctk.CTkLabel(nav, text=f"{mode_prefix} {display_name}", wraplength=220, justify="left")
+        welcome = ctk.CTkLabel(nav, text=f"{mode_prefix} {display_name}", wraplength=220, justify="left", text_color=APP_TEXT, font=_font(17, bold=True))
         welcome.pack(anchor="w", padx=16, pady=(16, 10))
 
-        nav_text = "Use Up/Down arrows to change pages."
-        ctk.CTkLabel(nav, text=nav_text, justify="left", wraplength=220).pack(anchor="w", padx=16, pady=(0, 12))
+        nav_text = "Use Up/Down arrows to change pages. Press F6 to jump between the page list and the details pane."
+        ctk.CTkLabel(nav, text=nav_text, justify="left", wraplength=220, text_color=APP_MUTED, font=_font(15, bold=True)).pack(anchor="w", padx=16, pady=(0, 12))
 
         for key in self.menu_order:
             title = PAGE_META[key]["title"]
-            button = ctk.CTkButton(nav, text=title, anchor="w", command=lambda page=key: self.select_page(page, announce=True))
+            button = ctk.CTkButton(nav, text=title, anchor="w", command=lambda page=key: self.select_page(page, announce=True), **self._button_style_kwargs())
             button.pack(fill="x", padx=16, pady=4)
             self.speech.bind_focus(button, title, PAGE_META[key]["hint"])
             self._bind_tab_aliases(button)
             self.nav_buttons[key] = button
 
-        self.detail_title = ctk.CTkLabel(details, text="", font=ctk.CTkFont(size=24, weight="bold"))
+        self.detail_title = ctk.CTkLabel(details, text="", text_color=APP_TEXT, font=_font(26, bold=True))
         self.detail_title.grid(row=0, column=0, sticky="w", padx=24, pady=(24, 8))
 
-        self.detail_body = ctk.CTkLabel(details, text="", wraplength=620, justify="left", anchor="w")
+        self.detail_body = ctk.CTkLabel(details, text="", wraplength=620, justify="left", anchor="w", text_color=APP_MUTED, font=_font(16, bold=True))
         self.detail_body.grid(row=1, column=0, sticky="w", padx=24, pady=(0, 16))
 
         self.action_frame = ctk.CTkFrame(details)
@@ -652,7 +774,7 @@ class GameSpaceApp(ctk.CTk):
         self.after(150, self._sync_keyboard_focus)
         self.speech.set_screen(
             "Main menu",
-            "Use Up and Down arrows to choose a page. Press Right Arrow or Enter to activate. Press Left Arrow to go back.",
+            "Use Up and Down arrows to choose a page. Press Right Arrow or Enter to activate. Press Left Arrow to go back. Press F6 to jump between panes.",
         )
 
     # updates selected page + redraws details/actions
@@ -680,7 +802,7 @@ class GameSpaceApp(ctk.CTk):
 
     # creates a standard action button in right panel
     def _add_action_button(self, text: str, command, hint: str) -> ctk.CTkButton:
-        button = ctk.CTkButton(self.action_frame, text=text, command=command)
+        button = ctk.CTkButton(self.action_frame, text=text, command=command, **self._button_style_kwargs())
         button.pack(fill="x", pady=6)
         self.speech.bind_focus(button, text, hint)
         self._bind_tab_aliases(button)
@@ -754,7 +876,7 @@ class GameSpaceApp(ctk.CTk):
             justify="left", anchor="w", wraplength=620,
         )
         code_label.pack(anchor="w", pady=(0, 4))
-        code_entry = ctk.CTkEntry(self.action_frame, textvariable=self.battleship_room_code_var, width=200)
+        code_entry = ctk.CTkEntry(self.action_frame, textvariable=self.battleship_room_code_var, width=200, fg_color=APP_ENTRY_BG, border_color=APP_BORDER, text_color=APP_TEXT)
         code_entry.pack(anchor="w", pady=(0, 14))
         self.speech.bind_focus(code_entry, "Room code field", "Enter or read out the room code.")
         self.action_widgets.append(code_entry)
@@ -779,7 +901,7 @@ class GameSpaceApp(ctk.CTk):
         port_note = ctk.CTkLabel(
             self.action_frame,
             text=f"Advanced: server runs on {self.client_host_var.get()}:{self.client_port_var.get()}",
-            text_color="#6b8cad", font=ctk.CTkFont(size=12),
+            text_color=APP_MUTED, font=_font(14, bold=True),
             justify="left", anchor="w",
         )
         port_note.pack(anchor="w", pady=(10, 0))
@@ -907,12 +1029,13 @@ class GameSpaceApp(ctk.CTk):
                 text=game_label,
                 width=100,
                 command=lambda gk=game_key: self._load_scoreboard(gk),
+                **self._button_style_kwargs(),
             )
             btn.pack(side="left", padx=4)
             self._register_action_button(btn, f"Show scoreboard for {game_label}.")
 
         # leaderboard list area
-        self.sb_display_frame = ctk.CTkScrollableFrame(self.action_frame, fg_color="#f7f9fc", corner_radius=8)
+        self.sb_display_frame = ctk.CTkScrollableFrame(self.action_frame, fg_color=APP_BG, corner_radius=8)
         self.sb_display_frame.pack(fill="both", expand=True)
 
         self._add_action_button(
@@ -939,7 +1062,7 @@ class GameSpaceApp(ctk.CTk):
         title = ctk.CTkLabel(
             self.sb_display_frame,
             text=f"🏆  {game_label} — Top Players",
-            font=ctk.CTkFont(size=18, weight="bold"),
+            font=_font(18, bold=True),
             anchor="w",
         )
         title.pack(anchor="w", padx=8, pady=(8, 12))
@@ -962,18 +1085,18 @@ class GameSpaceApp(ctk.CTk):
             return
 
         # column header row
-        header = ctk.CTkFrame(self.sb_display_frame, fg_color="#dce8f5", corner_radius=6)
+        header = ctk.CTkFrame(self.sb_display_frame, fg_color=APP_PANEL_ALT, corner_radius=6)
         header.pack(fill="x", padx=4, pady=(0, 4))
         header.grid_columnconfigure(1, weight=1)
         for col, (text, width) in enumerate([("Rank", 50), ("Player", 0), ("Wins", 60)]):
-            ctk.CTkLabel(header, text=text, font=ctk.CTkFont(weight="bold"), width=width, anchor="w").grid(
+            ctk.CTkLabel(header, text=text, font=_font(15, bold=True), width=width, anchor="w").grid(
                 row=0, column=col, padx=8, pady=6, sticky="w"
             )
 
         medals = {1: "🥇", 2: "🥈", 3: "🥉"}
         announce_lines = [f"{game_label} leaderboard."]
         for rank, row in enumerate(rows, start=1):
-            bg = "#eef8ee" if rank == 1 else "#ffffff"
+            bg = APP_ROW_HIGHLIGHT if rank == 1 else APP_PANEL
             entry_frame = ctk.CTkFrame(self.sb_display_frame, fg_color=bg, corner_radius=6)
             entry_frame.pack(fill="x", padx=4, pady=2)
             entry_frame.grid_columnconfigure(1, weight=1)
@@ -1002,13 +1125,13 @@ class GameSpaceApp(ctk.CTk):
 
         code_label = ctk.CTkLabel(self.action_frame, text="Game code")
         code_label.pack(anchor="w")
-        code_entry = ctk.CTkEntry(self.action_frame, textvariable=self.apples_code_var)
+        code_entry = ctk.CTkEntry(self.action_frame, textvariable=self.apples_code_var, fg_color=APP_ENTRY_BG, border_color=APP_BORDER, text_color=APP_TEXT)
         code_entry.pack(fill="x", pady=(4, 10))
         self.speech.bind_focus(code_entry, "Apples game code field", "Type a game code or create a new game.")
 
         name_label = ctk.CTkLabel(self.action_frame, text="Player name")
         name_label.pack(anchor="w")
-        name_entry = ctk.CTkEntry(self.action_frame, textvariable=self.apples_name_var)
+        name_entry = ctk.CTkEntry(self.action_frame, textvariable=self.apples_name_var, fg_color=APP_ENTRY_BG, border_color=APP_BORDER, text_color=APP_TEXT)
         name_entry.pack(fill="x", pady=(4, 10))
         self.speech.bind_focus(name_entry, "Apples player name field", "Type your player name before joining.")
 
@@ -1018,15 +1141,15 @@ class GameSpaceApp(ctk.CTk):
         button_row.pack(fill="x", pady=(0, 12))
         button_row.grid_columnconfigure((0, 1, 2), weight=1)
 
-        create_button = ctk.CTkButton(button_row, text="Create Game", command=self._apples_create_game)
+        create_button = ctk.CTkButton(button_row, text="Create Game", command=self._apples_create_game, **self._button_style_kwargs())
         create_button.grid(row=0, column=0, padx=(0, 6), sticky="ew")
         self._register_action_button(create_button, "Activate to create a new Apples to Apples game code.")
 
-        join_button = ctk.CTkButton(button_row, text="Join Game", command=self._apples_join_game)
+        join_button = ctk.CTkButton(button_row, text="Join Game", command=self._apples_join_game, **self._button_style_kwargs())
         join_button.grid(row=0, column=1, padx=6, sticky="ew")
         self._register_action_button(join_button, "Activate to join the current game code as the entered player name.")
 
-        refresh_button = ctk.CTkButton(button_row, text="Refresh State", command=self._refresh_apples_page)
+        refresh_button = ctk.CTkButton(button_row, text="Refresh State", command=self._refresh_apples_page, **self._button_style_kwargs())
         refresh_button.grid(row=0, column=2, padx=(6, 0), sticky="ew")
         self._register_action_button(refresh_button, "Activate to reload Apples to Apples game state.")
 
@@ -1056,7 +1179,7 @@ class GameSpaceApp(ctk.CTk):
         )
         status.pack(fill="x", pady=(8, 12))
 
-        ctk.CTkLabel(self.action_frame, text="Players", font=ctk.CTkFont(size=18, weight="bold")).pack(anchor="w")
+        ctk.CTkLabel(self.action_frame, text="Players", font=_font(18, bold=True)).pack(anchor="w")
         for player in roster:
             tag = []
             if game["judge_pid"] and int(player["id"]) == int(game["judge_pid"]):
@@ -1084,10 +1207,10 @@ class GameSpaceApp(ctk.CTk):
             if is_judge:
                 ctk.CTkLabel(self.action_frame, text="You are the judge. Wait for all players to submit their cards, then refresh.", justify="left", anchor="w", wraplength=620).pack(fill="x", pady=(12, 0))
             else:
-                ctk.CTkLabel(self.action_frame, text="Your hand", font=ctk.CTkFont(size=18, weight="bold")).pack(anchor="w", pady=(12, 6))
+                ctk.CTkLabel(self.action_frame, text="Your hand", font=_font(18, bold=True)).pack(anchor="w", pady=(12, 6))
                 hand = apples_service.get_hand(game_id, int(me["id"]))
                 for index, card in enumerate(hand[:apples_service.HAND_SIZE], start=1):
-                    btn = ctk.CTkButton(self.action_frame, text=f"Card {index}: {card}", command=lambda selected=card: self._apples_select_card(selected))
+                    btn = ctk.CTkButton(self.action_frame, text=f"Card {index}: {card}", command=lambda selected=card: self._apples_select_card(selected), **self._button_style_kwargs())
                     btn.pack(fill="x", pady=3)
                     self._register_action_button(btn, card)
                 selected_text = self.apples_selected_card or "No card selected."
@@ -1105,13 +1228,13 @@ class GameSpaceApp(ctk.CTk):
             if not is_judge:
                 ctk.CTkLabel(self.action_frame, text="Waiting for the judge to pick a winner. Press Refresh State to hear updates.", justify="left", anchor="w", wraplength=620).pack(fill="x", pady=(12, 0))
             else:
-                ctk.CTkLabel(self.action_frame, text="Judge submissions", font=ctk.CTkFont(size=18, weight="bold")).pack(anchor="w", pady=(12, 6))
+                ctk.CTkLabel(self.action_frame, text="Judge submissions", font=_font(18, bold=True)).pack(anchor="w", pady=(12, 6))
                 submissions = apples_service.list_submissions(game_id, round_num)
                 if not submissions:
                     ctk.CTkLabel(self.action_frame, text="No submissions yet.", justify="left", anchor="w").pack(fill="x")
                 else:
                     for index, card in enumerate(submissions, start=1):
-                        btn = ctk.CTkButton(self.action_frame, text=f"Winner option {index}: {card}", command=lambda selected=card: self._apples_pick_winner(game_id, round_num, int(me["id"]), selected))
+                        btn = ctk.CTkButton(self.action_frame, text=f"Winner option {index}: {card}", command=lambda selected=card: self._apples_pick_winner(game_id, round_num, int(me["id"]), selected), **self._button_style_kwargs())
                         btn.pack(fill="x", pady=3)
                         self._register_action_button(btn, card)
             return

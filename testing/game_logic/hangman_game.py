@@ -37,8 +37,11 @@ except ImportError:
 WIDTH = 1000
 HEIGHT = 700
 FPS = 60
-BG_COLOR = (255, 255, 255)
-TEXT_COLOR = (0, 0, 0)
+BG_COLOR = (248, 250, 252)
+TEXT_COLOR = (16, 37, 63)
+ACCENT_COLOR = (14, 92, 168)
+WARNING_COLOR = (176, 83, 0)
+MUTED_TEXT = (66, 85, 109)
 RADIUS = 24
 SPACE = 20
 WORDS = ["SOFTWARE", "DEVELOPMENT", "TECHNOLOGY", "STUDENT", "ASSOCIATION", "UNITY", "COMMUNITY"]
@@ -193,10 +196,10 @@ class HangmanGame:
         pygame.display.set_caption("Hangman")
         self.clock = pygame.time.Clock()
  
-        self.font = pygame.font.SysFont("comicsans", 45)
-        self.word_font = pygame.font.SysFont("comicsans", 40)
-        self.title_font = pygame.font.SysFont("comicsans", 70)
-        self.small_font = pygame.font.SysFont("comicsans", 22)
+        self.font = pygame.font.SysFont(None, 48, bold=True)
+        self.word_font = pygame.font.SysFont(None, 44, bold=True)
+        self.title_font = pygame.font.SysFont(None, 74, bold=True)
+        self.small_font = pygame.font.SysFont(None, 28, bold=True)
  
         self.state = "menu"
         self.letters = []
@@ -382,8 +385,8 @@ class HangmanGame:
         self.win.blit(title, (WIDTH / 2 - title.get_width() / 2, 200))
         text = self.word_font.render("Press SPACE or say 'start' to begin", 1, TEXT_COLOR)
         self.win.blit(text, (WIDTH / 2 - text.get_width() / 2, 350))
-        mic_status = "Microphone: ON" if self._listener.active else "Microphone: OFF (keyboard only)"
-        mic_color = (0, 150, 0) if self._listener.active else (180, 0, 0)
+        mic_status = "Microphone: ON - voice + keyboard" if self._listener.active else "Microphone: OFF - keyboard only"
+        mic_color = ACCENT_COLOR if self._listener.active else WARNING_COLOR
         mic_text = self.small_font.render(mic_status, 1, mic_color)
         self.win.blit(mic_text, (WIDTH / 2 - mic_text.get_width() / 2, 430))
         pygame.display.update()
@@ -403,16 +406,17 @@ class HangmanGame:
             x, y, ltr, visible = letter
             if visible:
                 if i == self.selected_index:
-                    pygame.draw.circle(self.win, (255, 165, 0), (x, y), RADIUS)
+                    pygame.draw.circle(self.win, ACCENT_COLOR, (x, y), RADIUS)
                 pygame.draw.circle(self.win, TEXT_COLOR, (x, y), RADIUS, 3)
-                txt = self.font.render(ltr, 1, TEXT_COLOR)
+                text_color = BG_COLOR if i == self.selected_index else TEXT_COLOR
+                txt = self.font.render(ltr, 1, text_color)
                 self.win.blit(txt, (x - txt.get_width() / 2, y - txt.get_height() / 2))
  
         if self._listener.active:
-            mic_surf = self.small_font.render("Listening...", 1, (0, 140, 0))
+            mic_surf = self.small_font.render("Listening... microphone on", 1, ACCENT_COLOR)
             self.win.blit(mic_surf, (10, HEIGHT - 30))
  
-        hint = self.small_font.render("F1 = read status | Say 'status' anytime", 1, (120, 120, 120))
+        hint = self.small_font.render("F1 = read status | Say 'status' anytime", 1, MUTED_TEXT)
         self.win.blit(hint, (WIDTH / 2 - hint.get_width() / 2, HEIGHT - 30))
  
         self.draw_hangman()

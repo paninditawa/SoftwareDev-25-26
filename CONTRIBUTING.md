@@ -37,6 +37,17 @@ Sign-in works out of the box after cloning. No extra setup needed.
 2. Do not commit secrets.
 3. Keep changes small and focused.
 
+## Accessibility Requirements
+
+Follow Microsoft accessibility guidance when you change UI code.
+
+1. Every interactive control must be reachable and usable from the keyboard.
+2. Keep a visible focus indicator. Do not remove or weaken focus borders.
+3. Do not use color alone to show state. Add text, symbols, or spoken feedback.
+4. Keep visible text at readable sizes and maintain at least a 4.5:1 text contrast ratio.
+5. Do not introduce hard-coded low-contrast overrides.
+6. Test the launcher with keyboard-only navigation before you commit.
+
 ## Secrets
 
 - `supabase_project.py` contains the shared anon key — this is intentionally committed and safe to share.

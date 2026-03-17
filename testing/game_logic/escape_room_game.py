@@ -484,8 +484,8 @@ class EscapeRoomGame:
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.FULLSCREEN | pygame.SCALED)
         pygame.display.set_caption("Escape Room")
         self.clock = pygame.time.Clock()
-        self.font = pygame.font.SysFont(None, 32)
-        self.small_font = pygame.font.SysFont(None, 24)
+        self.font = pygame.font.SysFont(None, 40, bold=True)
+        self.small_font = pygame.font.SysFont(None, 30, bold=True)
 
         self.snd_good = _chord([523, 659, 784], 0.35)
         self.snd_bad = _tone(200, 0.3)
@@ -508,18 +508,19 @@ class EscapeRoomGame:
         self.status_text = "Type a command and press ENTER" if self.keyboard_mode else "Hold SPACEBAR to speak"
 
     def draw(self):
-        self.screen.fill((10, 10, 15))
-        surf = self.font.render(self.status_text, True, (180, 180, 200))
+        self.screen.fill((14, 20, 28))
+        surf = self.font.render(self.status_text, True, (242, 246, 252))
         self.screen.blit(surf, (SCREEN_W // 2 - surf.get_width() // 2, SCREEN_H // 2 - 40))
 
         if self.keyboard_mode:
             typed = self.command_buffer[-48:] if self.command_buffer else ""
-            prompt = self.small_font.render("Type command + ENTER: " + typed, True, (210, 210, 230))
+            prompt = self.small_font.render("Type command + ENTER: " + typed, True, (214, 224, 236))
             self.screen.blit(prompt, (SCREEN_W // 2 - prompt.get_width() // 2, SCREEN_H // 2 + 8))
 
         if self.listening:
-            pygame.draw.circle(self.screen, (220, 60, 60), (SCREEN_W // 2, SCREEN_H // 2 + 30), 12)
-            s = self.small_font.render("Listening...", True, (220, 60, 60))
+            pygame.draw.circle(self.screen, (255, 191, 71), (SCREEN_W // 2, SCREEN_H // 2 + 30), 14)
+            pygame.draw.circle(self.screen, (14, 20, 28), (SCREEN_W // 2, SCREEN_H // 2 + 30), 14, 3)
+            s = self.small_font.render("Listening... hold space", True, (255, 191, 71))
             self.screen.blit(s, (SCREEN_W // 2 - s.get_width() // 2, SCREEN_H // 2 + 50))
 
         pygame.display.flip()

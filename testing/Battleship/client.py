@@ -57,17 +57,17 @@ SHIP_ORDER = [
     ("Destroyer",        2),
 ]
 
-C_BG      = (15,  25,  45)
-C_GRID    = (40,  60,  90)
-C_SHIP    = (100, 120, 150)
-C_PREVIEW = (60,  120, 200, 140)
-C_BAD     = (200,  60,  60, 140)
-C_SELECT  = (50,  170, 255)
-C_HIT     = (210,  50,  50)
-C_MISS    = (200, 200, 220)
-C_TEXT    = (220, 230, 245)
-C_DIM     = (120, 140, 170)
-C_LABEL   = (150, 180, 220)
+C_BG      = (18,  29,  43)
+C_GRID    = (125, 150, 179)
+C_SHIP    = (120, 145, 171)
+C_PREVIEW = (14,   92, 168, 140)
+C_BAD     = (176,  83,   0, 140)
+C_SELECT  = (255, 191,  71)
+C_HIT     = (198,  88,   0)
+C_MISS    = (236, 241, 247)
+C_TEXT    = (248, 250, 252)
+C_DIM     = (201, 212, 224)
+C_LABEL   = (255, 232, 166)
 
 pygame.init()
 pygame.mixer.init(frequency=44100, size=-16, channels=2)
@@ -365,8 +365,8 @@ threading.Thread(target=listen_server, daemon=True).start()
 # ---------------------------------------------------------------------------
 
 screen  = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-font_sm = pygame.font.SysFont(None, 20)
-font_md = pygame.font.SysFont(None, 26)
+font_sm = pygame.font.SysFont(None, 24, bold=True)
+font_md = pygame.font.SysFont(None, 30, bold=True)
 pygame.display.set_caption("EchoFleet Battleship")
 
 
@@ -381,8 +381,12 @@ def draw_grid(offset_x: int, hits, show_ships: bool) -> None:
                 cell = hits[row][col]
                 if cell == "hit" or cell is True:
                     pygame.draw.circle(screen, C_HIT,  rect.center, CELL // 3)
+                    marker = font_sm.render("X", True, C_TEXT)
+                    screen.blit(marker, marker.get_rect(center=rect.center))
                 elif cell == "miss" or cell is False:
                     pygame.draw.circle(screen, C_MISS, rect.center, CELL // 4)
+                    marker = font_sm.render("O", True, C_BG)
+                    screen.blit(marker, marker.get_rect(center=rect.center))
 
 
 def draw_placement_preview() -> None:

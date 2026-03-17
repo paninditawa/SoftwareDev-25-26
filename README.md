@@ -4,7 +4,7 @@ Accessible collection of mini-games with a desktop-first launcher, account sign-
 
 New contributors can follow the short setup guide in `CONTRIBUTING.md`.
 
-Keyboard controls: Up/Down arrows (or Shift+Tab/Tab) to navigate, Left/Right arrows to switch between menus and actions, Enter or Space to activate.
+Keyboard controls: Up/Down arrows (or Shift+Tab/Tab) to navigate, Left/Right arrows to switch between menus and actions, F6 to jump between panes, F1 for help, F2 to repeat the last message, F7 for current context, and Enter or Space to activate.
 
 ## Quick Start (Windows PowerShell)
 
@@ -67,6 +67,13 @@ python launch_gamespace.py
 - Spoken focus/context announcements.
 - Account sign-in, sign-up, and sign-out.
 - Launch support for Hangman, Maze, Mad Libs, Escape Room, Connect 4, Apples to Apples, and Battleship.
+
+## Accessibility Notes
+
+- The launcher + games use high-contrast text and larger default type so labels stay readable on classroom projectors and smaller laptops.
+- Important states should not rely only on color. Several games now add text or symbol markers like YOU, EXIT, 1 or 2, and X or O.
+- The project is still keyboard-first. If a screen becomes hard to read, the spoken announcements remain the backup way to confirm focus and state.
+- The current visual baseline follows Microsoft guidance for keyboard access, visible focus, non-color-only state, and readable text contrast.
 
 ## Troubleshooting Quick Notes
 

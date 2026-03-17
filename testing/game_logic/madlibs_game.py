@@ -23,13 +23,13 @@ except ImportError:
 # =============================================
 WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
-FONT_SIZE = 24
-TITLE_FONT_SIZE = 36
-BG_COLOR = (255, 255, 255)
-TEXT_COLOR = (0, 0, 0)
-OPTION_COLOR = (0, 102, 204)
-SELECTED_OPTION_COLOR = (255, 165, 0)
-HIGHLIGHT_COLOR = (255, 200, 0)
+FONT_SIZE = 30
+TITLE_FONT_SIZE = 48
+BG_COLOR = (248, 250, 252)
+TEXT_COLOR = (16, 37, 63)
+OPTION_COLOR = (14, 92, 168)
+SELECTED_OPTION_COLOR = (176, 83, 0)
+HIGHLIGHT_COLOR = (255, 191, 71)
 
 # =============================================
 # TTS (cross-platform)

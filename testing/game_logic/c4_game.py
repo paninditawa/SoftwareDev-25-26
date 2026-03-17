@@ -30,11 +30,13 @@ WIDTH = COLS * SQUARESIZE
 HEIGHT = (ROWS + 1) * SQUARESIZE
 SIZE = (WIDTH, HEIGHT)
 
-BLUE = (0, 0, 255)
+BLUE = (27, 76, 127)
 BLACK = (0, 0, 0)
-RED = (255, 0, 0)
-YELLOW = (255, 255, 0)
+RED = (198, 88, 0)
+YELLOW = (0, 113, 128)
 WHITE = (255, 255, 255)
+BOARD_HOLE = (241, 245, 249)
+PIECE_TEXT = (255, 255, 255)
 
 # -----------------------------
 # TTS (cross-platform)
@@ -126,7 +128,7 @@ def describe_column(board, col):
         if cell == 0:
             empty_count += 1
         else:
-            pieces.append("Red" if cell == 1 else "Yellow")
+            pieces.append("Player 1" if cell == 1 else "Player 2")
     
     flush()
 
@@ -141,6 +143,7 @@ def announce_column(board, col):
 # -----------------------------
 def draw_board(screen, board, selector_col):
     screen.fill(WHITE)
+    piece_font = pygame.font.SysFont(None, 42, bold=True)
 
     # Selector arrow
     x = selector_col * SQUARESIZE + SQUARESIZE//2
@@ -155,7 +158,7 @@ def draw_board(screen, board, selector_col):
         for r in range(ROWS):
             pygame.draw.rect(screen, BLUE,
                              (c*SQUARESIZE, (r+1)*SQUARESIZE, SQUARESIZE, SQUARESIZE))
-            pygame.draw.circle(screen, WHITE,
+            pygame.draw.circle(screen, BOARD_HOLE,
                                (c*SQUARESIZE + SQUARESIZE//2, (r+1)*SQUARESIZE + SQUARESIZE//2),
                                RADIUS)
 
@@ -172,6 +175,22 @@ def draw_board(screen, board, selector_col):
             pygame.draw.circle(screen, color,
                                (c*SQUARESIZE + SQUARESIZE//2, ((r+1)*SQUARESIZE + SQUARESIZE//2)),
                                RADIUS)
+            if piece in (1, 2):
+                pygame.draw.circle(
+                    screen,
+                    BLACK,
+                    (c*SQUARESIZE + SQUARESIZE//2, ((r+1)*SQUARESIZE + SQUARESIZE//2)),
+                    RADIUS,
+                    3,
+                )
+                marker = piece_font.render("1" if piece == 1 else "2", True, PIECE_TEXT)
+                screen.blit(
+                    marker,
+                    (
+                        c*SQUARESIZE + SQUARESIZE//2 - marker.get_width()//2,
+                        (r+1)*SQUARESIZE + SQUARESIZE//2 - marker.get_height()//2,
+                    ),
+                )
 
     pygame.display.update()
 
