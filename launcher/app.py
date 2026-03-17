@@ -1,3 +1,14 @@
+"""
+app.py is the main app file for the HelloWorld GameSpace launcher. 
+It's a desktop app built with customtkinter (UI toolkit) that serves as the hub for: 
+- launching various accessible games 
+- viewing the community scoreboard
+- managing user accounts 
+It integrates with Supabase for authentication and data storage.
+Finally, it includes features like keyboard navigation and text-to-speech accessibility support.
+"""
+
+# import all necessary modules and classes for the app
 from __future__ import annotations
 
 import subprocess
@@ -18,6 +29,7 @@ TESTING_DIR = REPO_ROOT / "testing"
 GAME_LOGIC_DIR = TESTING_DIR / "game_logic"
 BATTLESHIP_DIR = TESTING_DIR / "Battleship"
 
+# create dict of page metadata for launcher menu, including title, description, hint, and type of each page
 PAGE_META = {
     "home": {
         "title": "Home",
