@@ -104,12 +104,10 @@ SCOREBOARD_GAMES = [
     ("battleship", "Battleship"),
     ("hangman",    "Hangman"),
     ("maze",       "Maze Game"),
-    ("madlibs",    "Mad Libs"),
     ("escape",     "Escape Room"),
     ("connect4",   "Connect 4"),
     ("apples",     "Apples to Apples"),
 ]
-
 
 class GameSpaceApp(ctk.CTk):
     def __init__(self) -> None:
