@@ -568,11 +568,19 @@ class GameSpaceApp(ctk.CTk):
         self.speech.set_focus(button.cget("text"), "Press Enter to activate.")
 
     # moves cursor back into one login field
-    def _focus_login_entry(self, field_name: str) -> None:
+    def _focus_login_entry(self, field_name: str, select_all: bool = False) -> None:
         entry = self.login_entries.get(field_name)
         if entry is None:
             return
-        entry.focus_set()
+        try:
+            entry.focus_force()
+        except Exception:
+            entry.focus_set()
+        if select_all:
+            try:
+                entry.select_range(0, "end")
+            except Exception:
+                pass
         entry.icursor("end")
 
     # moves focus into first usable control in the details pane
@@ -720,7 +728,9 @@ class GameSpaceApp(ctk.CTk):
         self._register_login_button(help_button, "Read Login Help button", "Activate to hear login instructions.")
 
         if email_entry_widget is not None:
-            self.after(150, email_entry_widget.focus_set)  # move cursor into the email field
+            # Apply focus twice so the email field stays active after layout/focus churn.
+            self.after_idle(lambda: self._focus_login_entry("email", select_all=True))
+            self.after(250, lambda: self._focus_login_entry("email", select_all=True))
         self.after(250, self._style_login_buttons)
         self.speech.set_screen("Login screen", "Enter email and password. Use Up and Down arrows to move between buttons.")
 
