@@ -91,7 +91,7 @@ MENU_ORDER = [
     "connect4", "apples", "battleship", "scoreboard", "account",
 ]
 
-# Game name → display label for the scoreboard tabs
+# Game name: display label for the scoreboard tabs
 SCOREBOARD_GAMES = [
     ("battleship", "Battleship"),
     ("hangman",    "Hangman"),
@@ -101,7 +101,9 @@ SCOREBOARD_GAMES = [
     ("apples",     "Apples to Apples"),
 ]
 
+# main launcher window + shared app state
 class GameSpaceApp(ctk.CTk):
+    # sets up window + shared launcher state
     def __init__(self) -> None:
         super().__init__()
         ctk.set_appearance_mode("light")
@@ -113,8 +115,11 @@ class GameSpaceApp(ctk.CTk):
         self.configure(fg_color="#f2f5fb")
 
         self.auth_client = AuthClient.from_workspace(REPO_ROOT)
+
+        # hard stop if supabase auth missing
         if not self.auth_client.is_configured():
             raise RuntimeError("Supabase auth is required. Configure supabase_project.py before launching.")
+        
         self.speech = SpeechManager(on_announce=self._set_status)
         self.auth_session: AuthSession | None = None
         self.server_process: subprocess.Popen | None = None
@@ -143,7 +148,7 @@ class GameSpaceApp(ctk.CTk):
         self.apples_selected_card: str | None = None
         self.apples_judge_choice: str | None = None
 
-        # Scoreboard state
+        # cache scoreboard client + selected tab
         self._scoreboard: "Scoreboard | None" = None
         self._sb_selected_game: str = "battleship"
 
@@ -182,8 +187,10 @@ class GameSpaceApp(ctk.CTk):
 
         apples_service.init()
 
+        # first screen always login
         self.show_login()
 
+    # gets scoreboard client + creates once when needed
     def _get_scoreboard(self) -> "Scoreboard | None":
         if self._scoreboard is None:
             try:
@@ -193,6 +200,7 @@ class GameSpaceApp(ctk.CTk):
                 return None
         return self._scoreboard
 
+    # records a win for current signed-in user
     def record_win(self, game: str) -> None:
         """Call this when the logged-in user wins a game."""
         if self.auth_session is None:
@@ -209,12 +217,15 @@ class GameSpaceApp(ctk.CTk):
         except Exception as exc:
             print(f"[scoreboard] record_win failed: {exc}")
 
+    # builds python command used to launch game scripts
     def _launcher_command(self, *extra_args: str) -> list[str]:
         return [sys.executable, str(REPO_ROOT / "launch_gamespace.py"), *extra_args]
 
+    # updates status bar text at bottom
     def _set_status(self, text: str) -> None:
         self.status_var.set(f"Last message: {text}")
 
+    # clears current page widgets + resets nav state
     def _clear_content(self) -> None:
         for child in self.content.winfo_children():
             child.destroy()
@@ -226,7 +237,9 @@ class GameSpaceApp(ctk.CTk):
         self.action_index = 0
         self.nav_mode = True
 
+    # binds global keyboard shortcuts
     def _bind_global_keys(self) -> None:
+        # global keyboard map for whole launcher
         self.bind_all("<Up>", lambda event: self._handle_vertical(-1), add="+")
         self.bind_all("<Down>", lambda event: self._handle_vertical(1), add="+")
         self.bind_all("<Left>", self._handle_left, add="+")
@@ -236,10 +249,12 @@ class GameSpaceApp(ctk.CTk):
         self.bind_all("<space>", self._handle_activate, add="+")
         self.bind_all("<Escape>", self._handle_escape, add="+")
 
+    # makes tab keys act like vertical navigation keys
     def _bind_tab_aliases(self, widget: tk.Widget) -> None:
         widget.bind("<Shift-Tab>", lambda event: self._handle_vertical(-1), add="+")
         widget.bind("<Tab>", lambda event: self._handle_vertical(1), add="+")
 
+    # reads help message based on current screen
     def _handle_help(self, _event=None):
         if self.current_screen == "login":
             self.speech.announce(
@@ -255,20 +270,24 @@ class GameSpaceApp(ctk.CTk):
             self.speech.announce("Help is not available on this screen.", interrupt=True, force=True)
         return "break"
 
+    # repeats last spoken accessibility message
     def _handle_repeat(self, _event=None):
         self.speech.repeat_last()
         return "break"
 
+    # announces current screen + focus context
     def _handle_where_am_i(self, _event=None):
         self.speech.where_am_i()
         return "break"
 
+    # closes launcher when escape is pressed
     def _handle_escape(self, _event=None):
         self.speech.announce("Escape key was hit, so closing gamespace... goodbye!", interrupt=True, force=True)
-        # Allow speech to start before the window is destroyed.
+        # short delay so tts starts before app closes
         self.after(5000, self._on_close)
         return "break"
 
+    # moves keyboard mode back to left menu column
     def _handle_left(self, _event=None):
         if self.current_screen != "menu":
             return None
@@ -278,6 +297,7 @@ class GameSpaceApp(ctk.CTk):
         self._sync_keyboard_focus()
         return "break"
 
+    # moves keyboard mode to right action buttons
     def _handle_right(self, _event=None):
         if self.current_screen != "menu":
             return None
@@ -290,7 +310,9 @@ class GameSpaceApp(ctk.CTk):
         self.speech.announce("No action buttons on this page.", interrupt=True, force=True)
         return "break"
 
+    # handles enter/space activation for focused control
     def _handle_activate(self, _event=None):
+        # enter/space behavior changes by current screen + focus mode
         if self.current_screen == "menu":
             if self.nav_mode:
                 if len(self.action_buttons) == 1:
@@ -325,6 +347,7 @@ class GameSpaceApp(ctk.CTk):
             return "break"
         return None
 
+    # handles up/down movement based on current mode
     def _handle_vertical(self, delta: int):
         if self.current_screen == "login":
             if self._is_text_entry(self.focus_get()):
@@ -338,6 +361,7 @@ class GameSpaceApp(ctk.CTk):
             return self._move_menu_selection(delta)
         return self._move_action_selection(delta)
 
+    # checks if focused widget is a typing field
     def _is_text_entry(self, widget) -> bool:
         if widget is None:
             return False
@@ -346,6 +370,7 @@ class GameSpaceApp(ctk.CTk):
         except Exception:
             return False
 
+    # moves highlighted page in left nav list
     def _move_menu_selection(self, delta: int):
         if self.current_screen != "menu":
             return None
@@ -360,6 +385,7 @@ class GameSpaceApp(ctk.CTk):
         self._sync_keyboard_focus()
         return "break"
 
+    # moves highlighted action in right action list
     def _move_action_selection(self, delta: int):
         if not self.action_buttons:
             self.speech.announce("No action buttons on this page.", interrupt=True, force=True)
@@ -372,6 +398,7 @@ class GameSpaceApp(ctk.CTk):
         self._sync_keyboard_focus()
         return "break"
 
+    # moves highlighted login button action
     def _move_login_action_selection(self, delta: int):
         if not self.login_action_buttons:
             return "break"
@@ -379,11 +406,13 @@ class GameSpaceApp(ctk.CTk):
         self._sync_login_focus()
         return "break"
 
+    # registers login button for keyboard + speech support
     def _register_login_button(self, button: ctk.CTkButton, label: str, hint: str) -> None:
         self.speech.bind_focus(button, label, hint)
         self._bind_tab_aliases(button)
         self.login_action_buttons.append(button)
 
+        # syncs selected login action when button gets focus
         def _on_focus(_event=None):
             try:
                 self.login_action_index = self.login_action_buttons.index(button)
@@ -393,6 +422,7 @@ class GameSpaceApp(ctk.CTk):
 
         button.bind("<FocusIn>", _on_focus, add="+")
 
+    # styles login action buttons to show selected one
     def _style_login_buttons(self) -> None:
         for index, button in enumerate(self.login_action_buttons):
             if index == self.login_action_index:
@@ -400,6 +430,7 @@ class GameSpaceApp(ctk.CTk):
             else:
                 button.configure(border_width=0)
 
+    # applies focus to selected login action button
     def _sync_login_focus(self) -> None:
         if self.current_screen != "login" or not self.login_action_buttons:
             return
@@ -408,6 +439,7 @@ class GameSpaceApp(ctk.CTk):
         button.focus_set()
         self.speech.set_focus(button.cget("text"), "Press Enter to activate.")
 
+    # styles left nav button by selected/active state
     def _style_nav_button(self, key: str, button: ctk.CTkButton) -> None:
         selected = key == self.current_page_key
         keyboard_cursor = self.nav_mode and selected
@@ -418,6 +450,7 @@ class GameSpaceApp(ctk.CTk):
         else:
             button.configure(fg_color=("#3B8ED0", "#1F6AA5"), border_width=0)
 
+    # styles right action buttons by selected/active state
     def _style_action_buttons(self) -> None:
         for index, button in enumerate(self.action_buttons):
             keyboard_cursor = (not self.nav_mode) and index == self.action_index
@@ -426,7 +459,9 @@ class GameSpaceApp(ctk.CTk):
             else:
                 button.configure(border_width=0)
 
+    # syncs keyboard focus with nav/action selection state
     def _sync_keyboard_focus(self) -> None:
+        # keep visual highlight + keyboard focus in same spot
         if self.current_screen != "menu":
             return
         for key, button in self.nav_buttons.items():
@@ -444,7 +479,9 @@ class GameSpaceApp(ctk.CTk):
             text = button.cget("text")
             self.speech.set_focus(text, "Press Enter to activate.")
 
+    # builds + displays login screen ui
     def show_login(self) -> None:
+        # rebuild login ui from scratch each time
         self.current_screen = "login"
         self._clear_content()
         self.username_var = tk.StringVar()
@@ -478,6 +515,7 @@ class GameSpaceApp(ctk.CTk):
             entry.pack(padx=24, pady=(4, 16))
             self.speech.bind_focus(entry, f"{label_text} field", hint)
             if var is self.email_var:
+                # keep ref so cursor starts in email field
                 email_entry_widget = entry
 
         button_row = ctk.CTkFrame(card, fg_color="transparent")
@@ -501,13 +539,17 @@ class GameSpaceApp(ctk.CTk):
         self.after(250, self._style_login_buttons)
         self.speech.set_screen("Login screen", "Enter email and password. Use Up and Down arrows to move between buttons.")
 
+    # starts sign-in flow
     def _sign_in(self) -> None:
         self._run_auth_action("sign_in")
 
+    # starts account creation flow
     def _sign_up(self) -> None:
         self._run_auth_action("sign_up")
 
+    # validates auth form + calls sign-in/sign-up api
     def _run_auth_action(self, action: str) -> None:
+        # validate fields first, then call supabase auth
         try:
             username = self.username_var.get().strip()
             email = self.email_var.get().strip()
@@ -541,7 +583,9 @@ class GameSpaceApp(ctk.CTk):
             return
         self.show_menu()
 
+    # builds + displays main menu ui
     def show_menu(self) -> None:
+        # main app layout: left nav + right details/actions
         self.current_screen = "menu"
         self._clear_content()
         if self.auth_session is None:
@@ -599,6 +643,7 @@ class GameSpaceApp(ctk.CTk):
             "Use Up and Down arrows to choose a page. Press Right Arrow or Enter to activate. Press Left Arrow to go back.",
         )
 
+    # updates selected page + redraws details/actions
     def select_page(self, page_key: str, announce: bool = True) -> None:
         if page_key not in PAGE_META:
             return
@@ -613,6 +658,7 @@ class GameSpaceApp(ctk.CTk):
         if announce:
             self.speech.set_focus(meta["title"], meta["hint"])
 
+    # clears right-side action area widgets
     def _clear_actions(self) -> None:
         for child in self.action_frame.winfo_children():
             child.destroy()
@@ -620,6 +666,7 @@ class GameSpaceApp(ctk.CTk):
         self.action_buttons = []
         self.action_index = 0
 
+    # creates a standard action button in right panel
     def _add_action_button(self, text: str, command, hint: str) -> ctk.CTkButton:
         button = ctk.CTkButton(self.action_frame, text=text, command=command)
         button.pack(fill="x", pady=6)
@@ -629,6 +676,7 @@ class GameSpaceApp(ctk.CTk):
         self.action_buttons.append(button)
         return button
 
+    # registers externally created action button
     def _register_action_button(self, button: ctk.CTkButton, hint: str) -> None:
         text = button.cget("text")
         self.speech.bind_focus(button, text, hint)
@@ -636,6 +684,7 @@ class GameSpaceApp(ctk.CTk):
         self.action_widgets.append(button)
         self.action_buttons.append(button)
 
+    # shows an informational label in action area
     def _show_action_info(self, text: str) -> None:
         info = ctk.CTkLabel(
             self.action_frame,
@@ -648,11 +697,13 @@ class GameSpaceApp(ctk.CTk):
         self.action_widgets.append(info)
         self.action_buttons = []
 
+    # renders home page actions/help text
     def _render_home_actions(self) -> None:
         self._show_action_info(
             "Choose a game or account option from the left menu. Use Up and Down arrows to navigate, Enter or Space to activate."
         )
 
+    # renders one launch button for script-based pages
     def _render_script_actions(self, page_key: str) -> None:
         meta = PAGE_META[page_key]
         self._add_action_button(
@@ -661,10 +712,13 @@ class GameSpaceApp(ctk.CTk):
             f"Activate to launch {meta['title']}.",
         )
 
+    # renders account page actions
     def _render_account_actions(self) -> None:
         self._add_action_button("Sign Out", self._sign_out, "Activate to sign out and return to login.")
 
+    # routes page type to correct action renderer
     def _render_actions(self, page_key: str) -> None:
+        # page type -> renderer map keeps routing simple
         self._clear_actions()
         kind = PAGE_META[page_key]["type"]
         renderers = {
@@ -679,8 +733,9 @@ class GameSpaceApp(ctk.CTk):
         if renderer is not None:
             renderer()
 
+    # renders battleship page controls
     def _render_battleship_actions(self) -> None:
-        # Room-code display (host) or entry (join)
+        # room code input + host/join/stop controls
         code_label = ctk.CTkLabel(
             self.action_frame,
             text="Room code — share this with your opponent when hosting, or enter theirs to join:",
@@ -708,7 +763,7 @@ class GameSpaceApp(ctk.CTk):
             "Stops the running game server.",
         )
 
-        # Advanced / port info collapsed into a small note
+        # small note for current host/port values
         port_note = ctk.CTkLabel(
             self.action_frame,
             text=f"Advanced: server runs on {self.client_host_var.get()}:{self.client_port_var.get()}",
@@ -718,6 +773,7 @@ class GameSpaceApp(ctk.CTk):
         port_note.pack(anchor="w", pady=(10, 0))
         self.action_widgets.append(port_note)
 
+    # starts battleship server + host client
     def _battleship_host(self) -> None:
         """Start the server and immediately launch a client as the host player."""
         if self.server_process and self.server_process.poll() is None:
@@ -729,8 +785,7 @@ class GameSpaceApp(ctk.CTk):
             return
         host = self.client_host_var.get().strip() or "127.0.0.1"
 
-        # Generate a simple human-readable room code from the port so joiners
-        # can identify the right game without knowing networking details.
+        # make short room code from host/port/time
         import hashlib, time as _t
         raw = f"{host}:{port}:{_t.time()}"
         room_code = hashlib.md5(raw.encode()).hexdigest()[:6].upper()
@@ -743,13 +798,14 @@ class GameSpaceApp(ctk.CTk):
             cwd=str(REPO_ROOT),
         )
 
-        # Give the server a moment to bind before the client connects.
+        # tiny wait so server starts before client tries connect
         self.after(600, lambda: self._launch_battleship_client(host, port, is_host=True, room_code=room_code))
         self.speech.announce(
             f"Game started. Your room code is {' '.join(room_code)}. Share it with your opponent, then tell them to join.",
             interrupt=True, force=True,
         )
 
+    # joins existing battleship server as client
     def _battleship_join(self) -> None:
         """Join a hosted game using the room code (which maps to host:port)."""
         port = self._parse_port()
@@ -758,11 +814,12 @@ class GameSpaceApp(ctk.CTk):
         host = self.client_host_var.get().strip() or "127.0.0.1"
         self._launch_battleship_client(host, port, is_host=False)
 
+    # launches battleship client process
     def _launch_battleship_client(self, host: str, port: int, is_host: bool = False, room_code: str = "") -> None:
         client_path = BATTLESHIP_DIR / "client.py"
         relative_target = client_path.relative_to(REPO_ROOT).as_posix()
 
-        # Pass user identity so the client can signal a win back to the launcher.
+        # pass user id/name so game can report wins back
         user_id   = self.auth_session.local_id   if self.auth_session else ""
         username  = (self.auth_session.username or self.auth_session.email) if self.auth_session else "Guest"
 
@@ -779,6 +836,7 @@ class GameSpaceApp(ctk.CTk):
         action = "Hosting" if is_host else "Joining"
         self.speech.announce(f"{action} Battleship game.", interrupt=True, force=True)
 
+    # launches one of pygame script files
     def _launch_script(self, script_path: Path, title: str) -> None:
         if not script_path.exists():
             message = f"Could not find {script_path.name}."
@@ -794,6 +852,7 @@ class GameSpaceApp(ctk.CTk):
         subprocess.Popen(self._launcher_command("--run-target", relative_target), cwd=str(REPO_ROOT), env=env)
         self.speech.announce(f"Launching {title}.", interrupt=True, force=True)
 
+    # parses port text field into integer
     def _parse_port(self) -> int | None:
         value = self.client_port_var.get().strip()
         try:
@@ -803,6 +862,7 @@ class GameSpaceApp(ctk.CTk):
             messagebox.showerror("Invalid port", "Port must be a number.")
             return None
 
+    # stops running battleship server process
     def _stop_battleship_server(self) -> None:
         if not self.server_process or self.server_process.poll() is not None:
             self.speech.announce("No game is currently running.", interrupt=True, force=True)
@@ -811,7 +871,9 @@ class GameSpaceApp(ctk.CTk):
         self.server_process = None
         self.speech.announce("Game stopped.", interrupt=True, force=True)
 
+    # renders scoreboard page controls + list area
     def _render_scoreboard_actions(self) -> None:
+        # top row game tabs + scroll area for ranking rows
         sb = self._get_scoreboard()
         if sb is None:
             info = ctk.CTkLabel(
@@ -823,7 +885,7 @@ class GameSpaceApp(ctk.CTk):
             self.action_buttons = []
             return
 
-        # Game selector buttons across the top
+        # game tabs across top
         selector_frame = ctk.CTkFrame(self.action_frame, fg_color="transparent")
         selector_frame.pack(fill="x", pady=(0, 12))
 
@@ -837,7 +899,7 @@ class GameSpaceApp(ctk.CTk):
             btn.pack(side="left", padx=4)
             self._register_action_button(btn, f"Show scoreboard for {game_label}.")
 
-        # Leaderboard display area
+        # leaderboard list area
         self.sb_display_frame = ctk.CTkScrollableFrame(self.action_frame, fg_color="#f7f9fc", corner_radius=8)
         self.sb_display_frame.pack(fill="both", expand=True)
 
@@ -847,14 +909,15 @@ class GameSpaceApp(ctk.CTk):
             "Reload the leaderboard for the current game.",
         )
 
-        # Load default game
+        # load default tab after ui mounts
         self.after(100, lambda: self._load_scoreboard(self._sb_selected_game))
 
+    # loads scoreboard rows for chosen game tab
     def _load_scoreboard(self, game_key: str) -> None:
         self._sb_selected_game = game_key
         sb = self._get_scoreboard()
 
-        # Clear previous results
+        # clear old rows before drawing new game rows
         if not hasattr(self, "sb_display_frame") or not self.sb_display_frame.winfo_exists():
             return
         for child in self.sb_display_frame.winfo_children():
@@ -886,7 +949,7 @@ class GameSpaceApp(ctk.CTk):
             self.speech.announce(f"No scores yet for {game_label}.", interrupt=True, force=True)
             return
 
-        # Header row
+        # column header row
         header = ctk.CTkFrame(self.sb_display_frame, fg_color="#dce8f5", corner_radius=6)
         header.pack(fill="x", padx=4, pady=(0, 4))
         header.grid_columnconfigure(1, weight=1)
@@ -915,7 +978,9 @@ class GameSpaceApp(ctk.CTk):
 
         self.speech.announce(" ".join(announce_lines), interrupt=True, force=True)
 
+    # renders apples page controls + phase-specific ui
     def _render_apples_actions(self) -> None:
+        # apples page shows code/name + phase-specific controls
         helper = ctk.CTkLabel(
             self.action_frame,
             text="Create a local game code or join an existing one. After joining, refresh to hear the latest state.",
@@ -1042,18 +1107,22 @@ class GameSpaceApp(ctk.CTk):
         if game["phase"] == "game_over":
             ctk.CTkLabel(self.action_frame, text="Game over. Review the scores above or create a new game.", justify="left", anchor="w", wraplength=620).pack(fill="x", pady=(12, 0))
 
+    # gets current apples game from typed code
     def _current_apples_game(self):
         code = self.apples_code_var.get().strip().upper()
         if not code:
             return None
         return apples_service.game_by_code(code)
 
+    # refreshes apples page + clears temporary picks
     def _refresh_apples_page(self) -> None:
+        # clear local selections + redraw apples page
         self.apples_selected_card = None
         self.apples_judge_choice = None
         self.select_page("apples", announce=False)
         self.speech.announce("Apples to Apples state refreshed.", interrupt=True, force=True)
 
+    # creates new apples game code
     def _apples_create_game(self) -> None:
         code = apples_service.create_game(points_to_win=5)
         self.apples_code_var.set(code)
@@ -1062,6 +1131,7 @@ class GameSpaceApp(ctk.CTk):
         self.select_page("apples", announce=False)
         self.speech.announce(f"Created Apples to Apples game {code}.", interrupt=True, force=True)
 
+    # joins apples game with code + player name
     def _apples_join_game(self) -> None:
         code = self.apples_code_var.get().strip().upper()
         name = self.apples_name_var.get().strip()
@@ -1079,6 +1149,7 @@ class GameSpaceApp(ctk.CTk):
         self.select_page("apples", announce=False)
         self.speech.announce(f"Joined Apples to Apples game {code} as {name}.", interrupt=True, force=True)
 
+    # starts apples game after lobby stage
     def _apples_start_game(self) -> None:
         game = self._current_apples_game()
         if not game:
@@ -1092,11 +1163,13 @@ class GameSpaceApp(ctk.CTk):
         self.select_page("apples", announce=False)
         self.speech.announce("Apples to Apples game started.", interrupt=True, force=True)
 
+    # stores currently selected apples card
     def _apples_select_card(self, card: str) -> None:
         self.apples_selected_card = card
         self.select_page("apples", announce=False)
         self.speech.announce(f"Selected card: {card}", interrupt=True, force=True)
 
+    # submits selected apples card for this round
     def _apples_submit_card(self, game_id: int, round_num: int, player_id: int, judge_id: int) -> None:
         if not self.apples_selected_card:
             self.speech.announce("Select a card before submitting.", interrupt=True, force=True)
@@ -1110,6 +1183,7 @@ class GameSpaceApp(ctk.CTk):
         self.select_page("apples", announce=False)
         self.speech.announce(f"Submitted card: {submitted_card}", interrupt=True, force=True)
 
+    # chooses winning apples card as judge
     def _apples_pick_winner(self, game_id: int, round_num: int, judge_id: int, winning_card: str) -> None:
         try:
             apples_service.judge_pick(game_id, round_num, judge_id, winning_card)
@@ -1120,17 +1194,20 @@ class GameSpaceApp(ctk.CTk):
         self.select_page("apples", announce=False)
         self.speech.announce(f"Selected winning card: {winning_card}", interrupt=True, force=True)
 
+    # clears auth session + returns to login screen
     def _sign_out(self) -> None:
         self.auth_session = None
         self.speech.announce("Signed out.", interrupt=True, force=True)
         self.after_idle(self.show_login)
 
+    # closes launcher + stops background server if running
     def _on_close(self) -> None:
         if self.server_process and self.server_process.poll() is None:
             self.server_process.terminate()
         self.destroy()
 
 
+    # runs launcher app event loop
 def main() -> None:
     app = GameSpaceApp()
     app.mainloop()
