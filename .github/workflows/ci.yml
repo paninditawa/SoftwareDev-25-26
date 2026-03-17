@@ -1,3 +1,6 @@
+# This's a GitHub workflow file that's basically an automation process for continuous integration (CI) testing of a Python project.
+# It has a smoke test that checks if key imports in the project work correctly across different operating systems + Python versions.
+
 # This is the display name of this automation workflow.
 name: CI
 
