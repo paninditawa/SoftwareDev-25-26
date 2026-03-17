@@ -426,7 +426,6 @@ class HangmanGame:
         else:
             msg = f"YOU LOST! Word was {self.word}"
             self.speak(f"You lost. The word was {self.word}. It took you {self._elapsed_text()}. Say restart or press Space to play again.")
- 
         text = self.title_font.render(msg, 1, TEXT_COLOR)
         self.win.blit(text, (WIDTH / 2 - text.get_width() / 2, 300))
         sub = self.word_font.render("Say 'restart' or press SPACE for new game", 1, TEXT_COLOR)
@@ -456,15 +455,12 @@ class HangmanGame:
                     if event.type == pygame.KEYDOWN and event.key in (pygame.K_SPACE, pygame.K_RETURN):
                         self.reset_game()
                         self.state = "playing"
- 
                 elif self.state == "playing":
                     self.handle_game_input(event)
- 
                 elif self.state == "result":
                     if event.type == pygame.KEYDOWN and event.key in (pygame.K_SPACE, pygame.K_RETURN):
                         self.reset_game()
                         self.state = "playing"
- 
             if self.state == "menu":
                 self.draw_menu()
                 while not self._stt_queue.empty():
@@ -475,15 +471,11 @@ class HangmanGame:
                             self.state = "playing"
                     except queue.Empty:
                         break
- 
             elif self.state == "playing":
                 self.draw_game()
                 self.check_game_over()
- 
             elif self.state == "result":
                 self.draw_result()
- 
- 
 if __name__ == "__main__":
     game = HangmanGame()
     game.run()
