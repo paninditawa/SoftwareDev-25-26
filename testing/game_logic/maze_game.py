@@ -190,10 +190,9 @@ class SizeSelectScreen:
         self.small   = pygame.font.SysFont("segoeui", 28, bold=False)
         self.speech.speak(
             "Welcome to Accessible Maze Game. "
-            "Use the UP and DOWN arrow keys to choose your maze size. "
-            f"The current size is {self.size} by {self.size}. "
-            "Press SPACE to hear the current size again. "
-            "Press ENTER when ready to start."
+            "Use UP and DOWN arrows to choose maze size. "
+            f"Current size is {self.size} by {self.size}. "
+            "Press ENTER to start. Press I for full instructions."
         )
 
     def handle(self, event):
@@ -207,13 +206,21 @@ class SizeSelectScreen:
             self.speech.speak(f"Size {self.size} by {self.size}", interrupt=True)
         elif event.key == pygame.K_SPACE:
             self.speech.speak(f"Current size is {self.size} by {self.size}", interrupt=True)
+        elif event.key == pygame.K_i:
+            self.speech.speak(
+                "Instructions. "
+                "Use UP and DOWN arrows to choose your maze size. "
+                "Press ENTER to start. "
+                "In the maze, use arrow keys to move. "
+                "Press SPACE to hear which directions are open or blocked. "
+                "Press Q to quit back to this menu. "
+                "Press R to reset the maze with the same size. "
+                "Good luck!",
+                interrupt=True
+            )
         elif event.key == pygame.K_RETURN:
             self.speech.speak(
-                f"Starting a {self.size} by {self.size} maze. "
-                "Navigate from the top left corner to the bottom right corner. "
-                "Use arrow keys to move. "
-                "Press SPACE at any time to hear which directions are open or blocked. "
-                "Good luck!",
+                f"Starting {self.size} by {self.size} maze.",
                 interrupt=True
             )
             self.done = True
@@ -235,10 +242,13 @@ class SizeSelectScreen:
             "UP / DOWN  — change maze size",
             "SPACE      — hear current size",
             "ENTER      — start game",
+            "I          — hear full instructions",
             "",
             "In game:",
             "ARROWS     — move",
             "SPACE      — scan directions (tones + speech)",
+            "Q          — quit to menu",
+            "R          — reset maze (same size)",
             "",
             "On win screen:",
             "ENTER      — new maze (same size)",
@@ -363,6 +373,12 @@ class MazeGame:
 
         if event.key == pygame.K_SPACE:
             self._announce_position()
+        elif event.key == pygame.K_q:
+            self.speech.speak("Returning to menu.", interrupt=True)
+            return "menu"
+        elif event.key == pygame.K_r:
+            self.speech.speak("Maze reset.", interrupt=True)
+            self.reset()
 
         return None
 
@@ -421,7 +437,7 @@ class MazeGame:
 
         # HUD top
         hud = self.small.render(
-            "ARROWS=move   SPACE=scan directions   (win: ENTER=new maze   SPACE=menu)",
+            "ARROWS=move  SPACE=scan  Q=quit  R=reset  (win: ENTER=new  SPACE=menu)",
             True, GRAY
         )
         hud_text = "ARROWS=move   SPACE=scan directions   (win: ENTER=new maze   SPACE=menu)"
