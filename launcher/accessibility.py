@@ -48,7 +48,7 @@ class SpeechManager:
     def __init__(self, on_announce: Callable[[str], None] | None = None) -> None:
         # callback function (if one was provided)
         self.on_announce = on_announce
-        # start w voice output on.
+        # start w voice output on
         self.voice_enabled = True
         # remember last message to repeat or avoid dups
         self.last_message = ""
@@ -70,6 +70,7 @@ class SpeechManager:
 
         # save message as newest message
         self.last_message = text
+        
         # if callback exists, send message to it too
         if self.on_announce:
             self.on_announce(text)
@@ -105,36 +106,36 @@ class SpeechManager:
         # announce focus immediately + force it to be read
         self.announce(message, interrupt=True, force=True)
 
-    # Repeat the last spoken message, if any exists.
+    # repeat last spoken message, if any exists
     def repeat_last(self) -> None:
-        # Only repeat when we actually have a previous message.
+        # only repeat if there's a prev message
         if self.last_message:
             self.announce(self.last_message, interrupt=True, force=True)
 
-    # Say where the user is: screen, summary, and focused control.
+    # say where user is: screen, summary, + focused control
     def where_am_i(self) -> None:
-        # Collect context pieces into a list.
+        # collect context pieces into list
         parts = []
-        # Add screen title if known.
+        # add screen title if known
         if self.current_screen:
             parts.append(self.current_screen)
-        # Add screen summary if known.
+        # add screen summary if known
         if self.current_summary:
             parts.append(self.current_summary)
-        # Add focused control info if known.
+        # add focused control info if known
         if self.current_focus:
             parts.append(f"Focused on {self.current_focus}")
-        # Join parts into one sentence, or use a default message.
+        # join parts into one sentence, or use default message
         message = ". ".join(parts) if parts else "No current context available."
-        # Speak the location/context message immediately.
+        # speak location / context message immediately
         self.announce(message, interrupt=True, force=True)
 
-    # Attach focus behavior to a UI widget so focus is announced.
+    # attach focus behavior to UI widget so focus is announced
     def bind_focus(self, widget, label: str, hint: str = "") -> None:
-        # This runs whenever the widget gains keyboard focus.
+        # run whenever widget gains keyboard focus
         def _on_focus(_event=None) -> None:
-            # Announce the label and hint for the focused widget.
+            # announce label + hint for focused widget
             self.set_focus(label, hint)
 
-        # Register the focus handler and keep any existing handlers too.
+        # register focus handler a+ keep any existing handlers too
         widget.bind("<FocusIn>", _on_focus, add="+")
