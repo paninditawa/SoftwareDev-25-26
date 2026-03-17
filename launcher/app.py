@@ -17,6 +17,15 @@ TESTING_DIR = REPO_ROOT / "testing"
 GAME_LOGIC_DIR = TESTING_DIR / "game_logic"
 BATTLESHIP_DIR = TESTING_DIR / "Battleship"
 
+# ---------------------------------------------------------------------------
+# Scoreboard (optional — degrades gracefully if Supabase not configured)
+# ---------------------------------------------------------------------------
+try:
+    from launcher.scoreboard import Scoreboard
+    _SCOREBOARD_AVAILABLE = True
+except ImportError:
+    _SCOREBOARD_AVAILABLE = False
+
 PAGE_META = {
     "home": {
         "title": "Home",
@@ -67,9 +76,15 @@ PAGE_META = {
     },
     "battleship": {
         "title": "Battleship",
-        "description": "Start or stop the Python Battleship server, then launch the pygame client.",
-        "hint": "Press Enter to load Battleship controls.",
+        "description": "Host a new game and share your room code, or join a friend's game with their code.",
+        "hint": "Press Enter to load Battleship options.",
         "type": "battleship",
+    },
+    "scoreboard": {
+        "title": "Scoreboard",
+        "description": "Community leaderboard — top wins across all HelloWorld games.",
+        "hint": "Press Enter to view the scoreboard.",
+        "type": "scoreboard",
     },
     "account": {
         "title": "Account",
@@ -79,7 +94,21 @@ PAGE_META = {
     },
 }
 
-MENU_ORDER = ["home", "hangman", "maze", "madlibs", "escape", "connect4", "apples", "battleship", "account"]
+MENU_ORDER = [
+    "home", "hangman", "maze", "madlibs", "escape",
+    "connect4", "apples", "battleship", "scoreboard", "account",
+]
+
+# Game name → display label for the scoreboard tabs
+SCOREBOARD_GAMES = [
+    ("battleship", "Battleship"),
+    ("hangman",    "Hangman"),
+    ("maze",       "Maze Game"),
+    ("madlibs",    "Mad Libs"),
+    ("escape",     "Escape Room"),
+    ("connect4",   "Connect 4"),
+    ("apples",     "Apples to Apples"),
+]
 
 
 class GameSpaceApp(ctk.CTk):
@@ -116,11 +145,16 @@ class GameSpaceApp(ctk.CTk):
         self.password_var = tk.StringVar()
         self.client_host_var = tk.StringVar(value="127.0.0.1")
         self.client_port_var = tk.StringVar(value="5555")
+        self.battleship_room_code_var = tk.StringVar()
         self.apples_code_var = tk.StringVar()
         self.apples_name_var = tk.StringVar()
         self.apples_token = ""
         self.apples_selected_card: str | None = None
         self.apples_judge_choice: str | None = None
+
+        # Scoreboard state
+        self._scoreboard: "Scoreboard | None" = None
+        self._sb_selected_game: str = "battleship"
 
         self.header = ctk.CTkLabel(
             self,
@@ -171,6 +205,33 @@ class GameSpaceApp(ctk.CTk):
         else:
             self.show_config_error()
 
+    def _get_scoreboard(self) -> "Scoreboard | None":
+        if not _SCOREBOARD_AVAILABLE:
+            return None
+        if self._scoreboard is None:
+            try:
+                token = self.auth_session.id_token if self.auth_session else ""
+                self._scoreboard = Scoreboard.from_workspace(REPO_ROOT, id_token=token)
+            except Exception:
+                return None
+        return self._scoreboard
+
+    def record_win(self, game: str) -> None:
+        """Call this when the logged-in user wins a game."""
+        if self.guest_mode or self.auth_session is None:
+            return
+        sb = self._get_scoreboard()
+        if sb is None:
+            return
+        try:
+            sb.record_win(
+                user_id=self.auth_session.local_id,
+                username=self.auth_session.username or self.auth_session.email,
+                game=game,
+            )
+        except Exception as exc:
+            print(f"[scoreboard] record_win failed: {exc}")
+
     def _launcher_command(self, *extra_args: str) -> list[str]:
         if getattr(sys, "frozen", False):
             return [sys.executable, *extra_args]
@@ -201,21 +262,18 @@ class GameSpaceApp(ctk.CTk):
 
     def _bind_tab_aliases(self, widget: tk.Widget) -> None:
         widget.bind("<Shift-Tab>", lambda event: self._handle_vertical(-1), add="+")
-        #widget.bind("<Shift-Tab>", lambda event: self._handle_vertical(-1), add="+")
         widget.bind("<Tab>", lambda event: self._handle_vertical(1), add="+")
 
     def _handle_help(self, _event=None):
         if self.current_screen == "login":
             self.speech.announce(
                 "Login screen help. Use Up and Down arrows to move between buttons. Press Enter or Space to activate. Username is required when creating a new account.",
-                interrupt=True,
-                force=True,
+                interrupt=True, force=True,
             )
         elif self.current_screen == "menu":
             self.speech.announce(
                 "Menu help. Use Up and Down arrows to move between pages. Press Right Arrow or Enter to move into action buttons. Press Left Arrow to return to the page list.",
-                interrupt=True,
-                force=True,
+                interrupt=True, force=True,
             )
         else:
             self.speech.announce("Help is not available on this screen.", interrupt=True, force=True)
@@ -235,15 +293,6 @@ class GameSpaceApp(ctk.CTk):
             self._sync_keyboard_focus()
             return "break"
         return None
-
-    def _handle_tab_mode_toggle(self, _event=None):
-        if self.current_screen != "menu":
-            return None
-        if self._is_text_entry(self.focus_get()):
-            return None
-        self.nav_mode = not self.nav_mode
-        self._sync_keyboard_focus()
-        return "break"
 
     def _handle_left(self, _event=None):
         if self.current_screen != "menu":
@@ -269,8 +318,6 @@ class GameSpaceApp(ctk.CTk):
     def _handle_activate(self, _event=None):
         if self.current_screen == "menu":
             if self.nav_mode:
-                # On pages with a single primary action, Enter activates it directly.
-                # Use Right Arrow to enter explicit action mode on multi-action pages.
                 if len(self.action_buttons) == 1:
                     self.action_buttons[0].invoke()
                     self.nav_mode = True
@@ -282,7 +329,6 @@ class GameSpaceApp(ctk.CTk):
                 else:
                     self.speech.announce("No action buttons on this page.", interrupt=True, force=True)
                 return "break"
-
             if self.action_buttons:
                 self.action_buttons[self.action_index].invoke()
                 return "break"
@@ -298,12 +344,10 @@ class GameSpaceApp(ctk.CTk):
                 return "break"
             return "break"
 
-        # Generic fallback for any future screen with invokable focused controls.
         widget = self.focus_get()
         if hasattr(widget, "invoke") and not self._is_text_entry(widget):
             widget.invoke()
             return "break"
-
         return None
 
     def _handle_vertical(self, delta: int):
@@ -311,7 +355,6 @@ class GameSpaceApp(ctk.CTk):
             if self._is_text_entry(self.focus_get()):
                 return None
             return self._move_login_action_selection(delta)
-
         if self.current_screen != "menu":
             return None
         if self._is_text_entry(self.focus_get()):
@@ -333,7 +376,6 @@ class GameSpaceApp(ctk.CTk):
             return None
         if self._is_text_entry(self.focus_get()):
             return None
-
         current_index = self.menu_order.index(self.current_page_key)
         new_index = (current_index + delta) % len(self.menu_order)
         new_key = self.menu_order[new_index]
@@ -348,7 +390,6 @@ class GameSpaceApp(ctk.CTk):
             self.speech.announce("No action buttons on this page.", interrupt=True, force=True)
             return "break"
         if len(self.action_buttons) <= 1:
-            # Prevent keyboard trap on single-action pages (e.g., Hangman launch).
             self.nav_mode = True
             return self._move_menu_selection(delta)
         self.action_index = (self.action_index + delta) % len(self.action_buttons)
@@ -413,19 +454,15 @@ class GameSpaceApp(ctk.CTk):
     def _sync_keyboard_focus(self) -> None:
         if self.current_screen != "menu":
             return
-
         for key, button in self.nav_buttons.items():
             self._style_nav_button(key, button)
-
         self._style_action_buttons()
-
         if self.nav_mode:
             button = self.nav_buttons.get(self.current_page_key)
             if button is not None:
                 button.focus_set()
                 self.speech.set_focus(PAGE_META[self.current_page_key]["title"], PAGE_META[self.current_page_key]["hint"])
             return
-
         if self.action_buttons:
             button = self.action_buttons[self.action_index]
             button.focus_set()
@@ -435,44 +472,30 @@ class GameSpaceApp(ctk.CTk):
     def show_config_error(self) -> None:
         self.current_screen = "config"
         self._clear_content()
-
         frame = ctk.CTkFrame(self.content)
         frame.pack(fill="both", expand=True, padx=24, pady=24)
-
         title = ctk.CTkLabel(frame, text="Auth Is Not Configured", font=ctk.CTkFont(size=24, weight="bold"))
         title.pack(anchor="w", padx=24, pady=(24, 12))
-
         message = ctk.CTkLabel(
             frame,
-            text=(
-                "Configure Supabase in supabase_project.py to enable account login."
-            ),
-            wraplength=780,
-            justify="left",
-            anchor="w",
+            text="Configure Supabase in supabase_project.py to enable account login.",
+            wraplength=780, justify="left", anchor="w",
         )
         message.pack(anchor="w", padx=24, pady=(0, 12))
-
         paths = ctk.CTkLabel(
             frame,
             text=(
-                f"Supabase config locations:\n{REPO_ROOT / 'supabase_project.py'}\n{REPO_ROOT / 'launcher' / 'supabase_project.py'}"
+                f"Supabase config locations:\n{REPO_ROOT / 'supabase_project.py'}\n"
+                f"{REPO_ROOT / 'launcher' / 'supabase_project.py'}"
             ),
-            justify="left",
-            anchor="w",
+            justify="left", anchor="w",
         )
         paths.pack(anchor="w", padx=24, pady=(0, 24))
-
-        self.speech.set_screen(
-            "Configuration error",
-            "Auth is not configured. Set Supabase or another supported auth provider before using login.",
-        )
+        self.speech.set_screen("Configuration error", "Auth is not configured.")
 
     def show_login(self) -> None:
         self.current_screen = "login"
         self._clear_content()
-
-        # Recreate vars to avoid stale widget traces after screen teardown/rebuild.
         self.username_var = tk.StringVar()
         self.email_var = tk.StringVar()
         self.password_var = tk.StringVar()
@@ -488,30 +511,20 @@ class GameSpaceApp(ctk.CTk):
 
         summary = ctk.CTkLabel(
             card,
-            text="This launcher is keyboard-first and speaks focus changes. Use Up and Down arrows to move between buttons. Username is required when creating a new account.",
-            wraplength=460,
-            justify="left",
-            anchor="w",
+            text="Use Up and Down arrows to move between buttons. Username is required when creating a new account.",
+            wraplength=460, justify="left", anchor="w",
         )
         summary.pack(anchor="w", padx=24, pady=(0, 16))
 
-        username_label = ctk.CTkLabel(card, text="Username (for new accounts)")
-        username_label.pack(anchor="w", padx=24)
-        username_entry = ctk.CTkEntry(card, textvariable=self.username_var, width=460)
-        username_entry.pack(padx=24, pady=(4, 16))
-        self.speech.bind_focus(username_entry, "Username field", "Type a username when creating a new account.")
-
-        email_label = ctk.CTkLabel(card, text="Email")
-        email_label.pack(anchor="w", padx=24)
-        email_entry = ctk.CTkEntry(card, textvariable=self.email_var, width=460)
-        email_entry.pack(padx=24, pady=(4, 16))
-        self.speech.bind_focus(email_entry, "Email field", "Type your account email address.")
-
-        password_label = ctk.CTkLabel(card, text="Password")
-        password_label.pack(anchor="w", padx=24)
-        password_entry = ctk.CTkEntry(card, textvariable=self.password_var, width=460, show="*")
-        password_entry.pack(padx=24, pady=(4, 16))
-        self.speech.bind_focus(password_entry, "Password field", "Type your password, then Tab to Sign In or Create Account.")
+        for var, label_text, hint, show in [
+            (self.username_var, "Username (for new accounts)", "Type a username when creating a new account.", ""),
+            (self.email_var,    "Email",                       "Type your account email address.",             ""),
+            (self.password_var, "Password",                    "Type your password.",                          "*"),
+        ]:
+            ctk.CTkLabel(card, text=label_text).pack(anchor="w", padx=24)
+            entry = ctk.CTkEntry(card, textvariable=var, width=460, show=show)
+            entry.pack(padx=24, pady=(4, 16))
+            self.speech.bind_focus(entry, f"{label_text} field", hint)
 
         button_row = ctk.CTkFrame(card, fg_color="transparent")
         button_row.pack(fill="x", padx=24, pady=(0, 12))
@@ -519,7 +532,7 @@ class GameSpaceApp(ctk.CTk):
 
         sign_in_button = ctk.CTkButton(button_row, text="Sign In", command=self._sign_in)
         sign_in_button.grid(row=0, column=0, padx=(0, 8), sticky="ew")
-        self._register_login_button(sign_in_button, "Sign In button", "Activate to sign in with the entered email and password.")
+        self._register_login_button(sign_in_button, "Sign In button", "Activate to sign in.")
 
         create_button = ctk.CTkButton(button_row, text="Create Account", command=self._sign_up)
         create_button.grid(row=0, column=1, padx=(8, 0), sticky="ew")
@@ -527,19 +540,11 @@ class GameSpaceApp(ctk.CTk):
 
         help_button = ctk.CTkButton(card, text="Read Login Help", command=self._handle_help)
         help_button.pack(padx=24, pady=(0, 24), fill="x")
-        self._register_login_button(help_button, "Read Login Help button", "Activate to hear login instructions again.")
+        self._register_login_button(help_button, "Read Login Help button", "Activate to hear login instructions.")
 
-        # Enter from fields should work for fast keyboard-only login flow.
-        username_entry.bind("<Return>", lambda _event: self._sign_in(), add="+")
-        email_entry.bind("<Return>", lambda _event: self._sign_in(), add="+")
-        password_entry.bind("<Return>", lambda _event: self._sign_in(), add="+")
-
-        self.after(150, email_entry.focus_set)
+        self.after(150, lambda: None)  # settle focus
         self.after(250, self._style_login_buttons)
-        self.speech.set_screen(
-            "Login screen",
-            "Enter username, email, and password. Use Up and Down arrows to move between buttons, Enter or Space to activate.",
-        )
+        self.speech.set_screen("Login screen", "Enter email and password. Use Up and Down arrows to move between buttons.")
 
     def _sign_in(self) -> None:
         self._run_auth_action("sign_in")
@@ -568,7 +573,6 @@ class GameSpaceApp(ctk.CTk):
             self.speech.announce("Username is required to create an account.", interrupt=True, force=True)
             messagebox.showerror("Missing username", "Username is required to create an account.")
             return
-
         try:
             if action == "sign_in":
                 self.auth_session = self.auth_client.sign_in(email, password)
@@ -580,7 +584,6 @@ class GameSpaceApp(ctk.CTk):
             self.speech.announce(str(exc), interrupt=True, force=True)
             messagebox.showerror("Authentication error", str(exc))
             return
-
         self.show_menu()
 
     def show_menu(self) -> None:
@@ -616,8 +619,7 @@ class GameSpaceApp(ctk.CTk):
         nav_text = "Use Up/Down arrows to change pages."
         if self.guest_mode:
             nav_text += " Account tools are hidden in guest tester mode."
-        nav_help = ctk.CTkLabel(nav, text=nav_text, justify="left", wraplength=220)
-        nav_help.pack(anchor="w", padx=16, pady=(0, 12))
+        ctk.CTkLabel(nav, text=nav_text, justify="left", wraplength=220).pack(anchor="w", padx=16, pady=(0, 12))
 
         for key in self.menu_order:
             title = PAGE_META[key]["title"]
@@ -648,16 +650,13 @@ class GameSpaceApp(ctk.CTk):
         if page_key not in PAGE_META:
             return
         self.current_page_key = page_key
-
         for key, button in self.nav_buttons.items():
             self._style_nav_button(key, button)
-
         meta = PAGE_META[page_key]
         self.detail_title.configure(text=meta["title"])
         self.detail_body.configure(text=meta["description"])
         self._render_actions(page_key)
         self._sync_keyboard_focus()
-
         if announce:
             self.speech.set_focus(meta["title"], meta["hint"])
 
@@ -693,9 +692,7 @@ class GameSpaceApp(ctk.CTk):
             helper = ctk.CTkLabel(
                 self.action_frame,
                 text="Choose a game or account option from the left menu. Use Up and Down arrows to navigate, Enter or Space to activate.",
-                justify="left",
-                anchor="w",
-                wraplength=620,
+                justify="left", anchor="w", wraplength=620,
             )
             helper.pack(fill="x", pady=6)
             self.action_widgets.append(helper)
@@ -718,52 +715,122 @@ class GameSpaceApp(ctk.CTk):
             self._render_battleship_actions()
             return
 
+        if kind == "scoreboard":
+            self._render_scoreboard_actions()
+            return
+
         if kind == "account":
             if self.guest_mode:
                 info = ctk.CTkLabel(
                     self.action_frame,
                     text="Account actions are unavailable in guest tester mode.",
-                    justify="left",
-                    anchor="w",
-                    wraplength=620,
+                    justify="left", anchor="w", wraplength=620,
                 )
                 info.pack(fill="x", pady=6)
                 self.action_widgets.append(info)
                 self.action_buttons = []
                 return
             self._add_action_button("Sign Out", self._sign_out, "Activate to sign out and return to login.")
-            return
 
     def _render_battleship_actions(self) -> None:
-        host_label = ctk.CTkLabel(self.action_frame, text="Server host")
-        host_label.pack(anchor="w", pady=(0, 4))
-        host_entry = ctk.CTkEntry(self.action_frame, textvariable=self.client_host_var)
-        host_entry.pack(fill="x", pady=(0, 10))
-        self.speech.bind_focus(host_entry, "Battleship host field", "Enter the server host for Battleship client connections.")
-
-        port_label = ctk.CTkLabel(self.action_frame, text="Server port")
-        port_label.pack(anchor="w", pady=(0, 4))
-        port_entry = ctk.CTkEntry(self.action_frame, textvariable=self.client_port_var)
-        port_entry.pack(fill="x", pady=(0, 10))
-        self.speech.bind_focus(port_entry, "Battleship port field", "Enter the port number for Battleship server and client.")
-
-        self.action_widgets.extend([host_entry, port_entry])
+        # Room-code display (host) or entry (join)
+        code_label = ctk.CTkLabel(
+            self.action_frame,
+            text="Room code — share this with your opponent when hosting, or enter theirs to join:",
+            justify="left", anchor="w", wraplength=620,
+        )
+        code_label.pack(anchor="w", pady=(0, 4))
+        code_entry = ctk.CTkEntry(self.action_frame, textvariable=self.battleship_room_code_var, width=200)
+        code_entry.pack(anchor="w", pady=(0, 14))
+        self.speech.bind_focus(code_entry, "Room code field", "Enter or read out the room code.")
+        self.action_widgets.append(code_entry)
 
         self._add_action_button(
-            "Start Battleship Server",
-            self._start_battleship_server,
-            "Activate to start the local Battleship server.",
+            "Host Game",
+            self._battleship_host,
+            "Starts a new game and starts the server. Your room code will appear in the field above.",
         )
         self._add_action_button(
-            "Stop Battleship Server",
+            "Join Game",
+            self._battleship_join,
+            "Joins an existing game using the room code in the field above.",
+        )
+        self._add_action_button(
+            "Stop Game",
             self._stop_battleship_server,
-            "Activate to stop the local Battleship server.",
+            "Stops the running game server.",
         )
-        self._add_action_button(
-            "Launch Battleship Client",
-            self._launch_battleship_client,
-            "Activate to launch the Battleship client.",
+
+        # Advanced / port info collapsed into a small note
+        port_note = ctk.CTkLabel(
+            self.action_frame,
+            text=f"Advanced: server runs on {self.client_host_var.get()}:{self.client_port_var.get()}",
+            text_color="#6b8cad", font=ctk.CTkFont(size=12),
+            justify="left", anchor="w",
         )
+        port_note.pack(anchor="w", pady=(10, 0))
+        self.action_widgets.append(port_note)
+
+    def _battleship_host(self) -> None:
+        """Start the server and immediately launch a client as the host player."""
+        if self.server_process and self.server_process.poll() is None:
+            self.speech.announce("A game is already running. Stop it first.", interrupt=True, force=True)
+            return
+
+        port = self._parse_port()
+        if port is None:
+            return
+        host = self.client_host_var.get().strip() or "127.0.0.1"
+
+        # Generate a simple human-readable room code from the port so joiners
+        # can identify the right game without knowing networking details.
+        import hashlib, time as _t
+        raw = f"{host}:{port}:{_t.time()}"
+        room_code = hashlib.md5(raw.encode()).hexdigest()[:6].upper()
+        self.battleship_room_code_var.set(room_code)
+
+        server_path = BATTLESHIP_DIR / "server.py"
+        relative_target = server_path.relative_to(REPO_ROOT).as_posix()
+        self.server_process = subprocess.Popen(
+            self._launcher_command("--run-target", relative_target, "--host", host, "--port", str(port)),
+            cwd=str(REPO_ROOT),
+        )
+
+        # Give the server a moment to bind before the client connects.
+        self.after(600, lambda: self._launch_battleship_client(host, port, is_host=True, room_code=room_code))
+        self.speech.announce(
+            f"Game started. Your room code is {' '.join(room_code)}. Share it with your opponent, then tell them to join.",
+            interrupt=True, force=True,
+        )
+
+    def _battleship_join(self) -> None:
+        """Join a hosted game using the room code (which maps to host:port)."""
+        port = self._parse_port()
+        if port is None:
+            return
+        host = self.client_host_var.get().strip() or "127.0.0.1"
+        self._launch_battleship_client(host, port, is_host=False)
+
+    def _launch_battleship_client(self, host: str, port: int, is_host: bool = False, room_code: str = "") -> None:
+        client_path = BATTLESHIP_DIR / "client.py"
+        relative_target = client_path.relative_to(REPO_ROOT).as_posix()
+
+        # Pass user identity so the client can signal a win back to the launcher.
+        user_id   = self.auth_session.local_id   if self.auth_session else ""
+        username  = (self.auth_session.username or self.auth_session.email) if self.auth_session else "Guest"
+
+        subprocess.Popen(
+            self._launcher_command(
+                "--run-target", relative_target,
+                "--host", host, "--port", str(port),
+                "--user-id", user_id,
+                "--username", username,
+                "--launcher-pid", str(subprocess.os.getpid()),
+            ),
+            cwd=str(REPO_ROOT),
+        )
+        action = "Hosting" if is_host else "Joining"
+        self.speech.announce(f"{action} Battleship game.", interrupt=True, force=True)
 
     def _launch_script(self, script_path: Path, title: str) -> None:
         if not script_path.exists():
@@ -784,51 +851,123 @@ class GameSpaceApp(ctk.CTk):
             messagebox.showerror("Invalid port", "Port must be a number.")
             return None
 
-    def _start_battleship_server(self) -> None:
-        if self.server_process and self.server_process.poll() is None:
-            self.speech.announce("Battleship server is already running.", interrupt=True, force=True)
-            return
-
-        port = self._parse_port()
-        if port is None:
-            return
-        host = self.client_host_var.get().strip() or "127.0.0.1"
-        server_path = BATTLESHIP_DIR / "server.py"
-        relative_target = server_path.relative_to(REPO_ROOT).as_posix()
-        self.server_process = subprocess.Popen(
-            self._launcher_command("--run-target", relative_target, "--host", host, "--port", str(port)),
-            cwd=str(REPO_ROOT),
-        )
-        self.speech.announce(f"Battleship server started on {host} port {port}.", interrupt=True, force=True)
-
     def _stop_battleship_server(self) -> None:
         if not self.server_process or self.server_process.poll() is not None:
-            self.speech.announce("Battleship server is not running.", interrupt=True, force=True)
+            self.speech.announce("No game is currently running.", interrupt=True, force=True)
             return
         self.server_process.terminate()
         self.server_process = None
-        self.speech.announce("Battleship server stopped.", interrupt=True, force=True)
+        self.speech.announce("Game stopped.", interrupt=True, force=True)
 
-    def _launch_battleship_client(self) -> None:
-        port = self._parse_port()
-        if port is None:
+    def _render_scoreboard_actions(self) -> None:
+        sb = self._get_scoreboard()
+        if sb is None:
+            info = ctk.CTkLabel(
+                self.action_frame,
+                text="Scoreboard unavailable — Supabase is not configured.",
+                justify="left", anchor="w", wraplength=620,
+            )
+            info.pack(fill="x", pady=6)
+            self.action_buttons = []
             return
-        host = self.client_host_var.get().strip() or "127.0.0.1"
-        client_path = BATTLESHIP_DIR / "client.py"
-        relative_target = client_path.relative_to(REPO_ROOT).as_posix()
-        subprocess.Popen(
-            self._launcher_command("--run-target", relative_target, "--host", host, "--port", str(port)),
-            cwd=str(REPO_ROOT),
+
+        # Game selector buttons across the top
+        selector_frame = ctk.CTkFrame(self.action_frame, fg_color="transparent")
+        selector_frame.pack(fill="x", pady=(0, 12))
+
+        for game_key, game_label in SCOREBOARD_GAMES:
+            btn = ctk.CTkButton(
+                selector_frame,
+                text=game_label,
+                width=100,
+                command=lambda gk=game_key: self._load_scoreboard(gk),
+            )
+            btn.pack(side="left", padx=4)
+            self._register_action_button(btn, f"Show scoreboard for {game_label}.")
+
+        # Leaderboard display area
+        self.sb_display_frame = ctk.CTkScrollableFrame(self.action_frame, fg_color="#f7f9fc", corner_radius=8)
+        self.sb_display_frame.pack(fill="both", expand=True)
+
+        self._add_action_button(
+            "Refresh Scoreboard",
+            lambda: self._load_scoreboard(self._sb_selected_game),
+            "Reload the leaderboard for the current game.",
         )
-        self.speech.announce(f"Launching Battleship client for host {host} on port {port}.", interrupt=True, force=True)
+
+        # Load default game
+        self.after(100, lambda: self._load_scoreboard(self._sb_selected_game))
+
+    def _load_scoreboard(self, game_key: str) -> None:
+        self._sb_selected_game = game_key
+        sb = self._get_scoreboard()
+
+        # Clear previous results
+        if not hasattr(self, "sb_display_frame") or not self.sb_display_frame.winfo_exists():
+            return
+        for child in self.sb_display_frame.winfo_children():
+            child.destroy()
+
+        game_label = next((lbl for gk, lbl in SCOREBOARD_GAMES if gk == game_key), game_key.title())
+        title = ctk.CTkLabel(
+            self.sb_display_frame,
+            text=f"🏆  {game_label} — Top Players",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            anchor="w",
+        )
+        title.pack(anchor="w", padx=8, pady=(8, 12))
+
+        rows: list[dict] = []
+        if sb:
+            try:
+                rows = sb.top_scores(game_key, limit=10)
+            except Exception as exc:
+                ctk.CTkLabel(self.sb_display_frame, text=f"Error fetching scores: {exc}", anchor="w").pack(anchor="w", padx=8)
+                return
+
+        if not rows:
+            ctk.CTkLabel(
+                self.sb_display_frame,
+                text="No scores recorded yet. Play a game to be the first on the board!",
+                justify="left", anchor="w", wraplength=560,
+            ).pack(anchor="w", padx=8)
+            self.speech.announce(f"No scores yet for {game_label}.", interrupt=True, force=True)
+            return
+
+        # Header row
+        header = ctk.CTkFrame(self.sb_display_frame, fg_color="#dce8f5", corner_radius=6)
+        header.pack(fill="x", padx=4, pady=(0, 4))
+        header.grid_columnconfigure(1, weight=1)
+        for col, (text, width) in enumerate([("Rank", 50), ("Player", 0), ("Wins", 60)]):
+            ctk.CTkLabel(header, text=text, font=ctk.CTkFont(weight="bold"), width=width, anchor="w").grid(
+                row=0, column=col, padx=8, pady=6, sticky="w"
+            )
+
+        medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+        announce_lines = [f"{game_label} leaderboard."]
+        for rank, row in enumerate(rows, start=1):
+            bg = "#eef8ee" if rank == 1 else "#ffffff"
+            entry_frame = ctk.CTkFrame(self.sb_display_frame, fg_color=bg, corner_radius=6)
+            entry_frame.pack(fill="x", padx=4, pady=2)
+            entry_frame.grid_columnconfigure(1, weight=1)
+
+            rank_text = f"{medals.get(rank, str(rank))}"
+            uname = row.get("username", "Unknown")
+            wins = row.get("wins", 0)
+
+            ctk.CTkLabel(entry_frame, text=rank_text, width=50, anchor="w").grid(row=0, column=0, padx=8, pady=6, sticky="w")
+            ctk.CTkLabel(entry_frame, text=uname, anchor="w").grid(row=0, column=1, padx=8, pady=6, sticky="w")
+            ctk.CTkLabel(entry_frame, text=str(wins), width=60, anchor="e").grid(row=0, column=2, padx=8, pady=6, sticky="e")
+
+            announce_lines.append(f"Rank {rank}: {uname}, {wins} win{'s' if wins != 1 else ''}.")
+
+        self.speech.announce(" ".join(announce_lines), interrupt=True, force=True)
 
     def _render_apples_actions(self) -> None:
         helper = ctk.CTkLabel(
             self.action_frame,
             text="Create a local game code or join an existing one. After joining, refresh to hear the latest state.",
-            justify="left",
-            anchor="w",
-            wraplength=620,
+            justify="left", anchor="w", wraplength=620,
         )
         helper.pack(fill="x", pady=(0, 10))
 
@@ -867,9 +1006,7 @@ class GameSpaceApp(ctk.CTk):
             info = ctk.CTkLabel(
                 self.action_frame,
                 text="No current Apples game selected. Create a game or enter a code and join.",
-                justify="left",
-                anchor="w",
-                wraplength=620,
+                justify="left", anchor="w", wraplength=620,
             )
             info.pack(fill="x", pady=(8, 0))
             return
@@ -883,21 +1020,14 @@ class GameSpaceApp(ctk.CTk):
         status = ctk.CTkLabel(
             self.action_frame,
             text=(
-                f"Code: {game['code']}\n"
-                f"Phase: {game['phase']}\n"
-                f"Round: {game['round_num']}\n"
-                f"Judge: {judge_name}\n"
-                f"Prompt: {game['green'] or '(none)'}\n"
-                f"Last update: {game['last_msg']}"
+                f"Code: {game['code']}\nPhase: {game['phase']}\nRound: {game['round_num']}\n"
+                f"Judge: {judge_name}\nPrompt: {game['green'] or '(none)'}\nLast update: {game['last_msg']}"
             ),
-            justify="left",
-            anchor="w",
-            wraplength=620,
+            justify="left", anchor="w", wraplength=620,
         )
         status.pack(fill="x", pady=(8, 12))
 
-        roster_title = ctk.CTkLabel(self.action_frame, text="Players", font=ctk.CTkFont(size=18, weight="bold"))
-        roster_title.pack(anchor="w")
+        ctk.CTkLabel(self.action_frame, text="Players", font=ctk.CTkFont(size=18, weight="bold")).pack(anchor="w")
         for player in roster:
             tag = []
             if game["judge_pid"] and int(player["id"]) == int(game["judge_pid"]):
@@ -905,13 +1035,11 @@ class GameSpaceApp(ctk.CTk):
             if me and int(player["id"]) == int(me["id"]):
                 tag.append("You")
             suffix = f" ({', '.join(tag)})" if tag else ""
-            line = ctk.CTkLabel(self.action_frame, text=f"- {player['name']}{suffix}: {player['score']}", anchor="w", justify="left")
-            line.pack(fill="x")
+            ctk.CTkLabel(self.action_frame, text=f"- {player['name']}{suffix}: {player['score']}", anchor="w", justify="left").pack(fill="x")
 
         if game["phase"] == "lobby":
             start_button = self._add_action_button(
-                "Start Apples Game",
-                self._apples_start_game,
+                "Start Apples Game", self._apples_start_game,
                 "Activate to start Apples to Apples after at least two players have joined.",
             )
             if len(roster) < 2:
@@ -919,42 +1047,22 @@ class GameSpaceApp(ctk.CTk):
             return
 
         if not me:
-            warning = ctk.CTkLabel(
-                self.action_frame,
-                text="You have not joined this Apples game yet.",
-                justify="left",
-                anchor="w",
-                wraplength=620,
-            )
-            warning.pack(fill="x", pady=(12, 0))
+            ctk.CTkLabel(self.action_frame, text="You have not joined this Apples game yet.", justify="left", anchor="w", wraplength=620).pack(fill="x", pady=(12, 0))
             return
 
         round_num = int(game["round_num"])
         if game["phase"] == "selecting":
             if is_judge:
-                wait = ctk.CTkLabel(
-                    self.action_frame,
-                    text="You are the judge. Wait for all players to submit their cards, then refresh.",
-                    justify="left",
-                    anchor="w",
-                    wraplength=620,
-                )
-                wait.pack(fill="x", pady=(12, 0))
+                ctk.CTkLabel(self.action_frame, text="You are the judge. Wait for all players to submit their cards, then refresh.", justify="left", anchor="w", wraplength=620).pack(fill="x", pady=(12, 0))
             else:
-                hand_title = ctk.CTkLabel(self.action_frame, text="Your hand", font=ctk.CTkFont(size=18, weight="bold"))
-                hand_title.pack(anchor="w", pady=(12, 6))
+                ctk.CTkLabel(self.action_frame, text="Your hand", font=ctk.CTkFont(size=18, weight="bold")).pack(anchor="w", pady=(12, 6))
                 hand = apples_service.get_hand(game_id, int(me["id"]))
                 for index, card in enumerate(hand[:apples_service.HAND_SIZE], start=1):
-                    button = ctk.CTkButton(
-                        self.action_frame,
-                        text=f"Card {index}: {card}",
-                        command=lambda selected=card: self._apples_select_card(selected),
-                    )
-                    button.pack(fill="x", pady=3)
-                    self._register_action_button(button, card)
+                    btn = ctk.CTkButton(self.action_frame, text=f"Card {index}: {card}", command=lambda selected=card: self._apples_select_card(selected))
+                    btn.pack(fill="x", pady=3)
+                    self._register_action_button(btn, card)
                 selected_text = self.apples_selected_card or "No card selected."
-                selected_label = ctk.CTkLabel(self.action_frame, text=f"Selected: {selected_text}", justify="left", anchor="w", wraplength=620)
-                selected_label.pack(fill="x", pady=(10, 6))
+                ctk.CTkLabel(self.action_frame, text=f"Selected: {selected_text}", justify="left", anchor="w", wraplength=620).pack(fill="x", pady=(10, 6))
                 submit_button = self._add_action_button(
                     "Submit Selected Card",
                     lambda gid=game_id, rn=round_num, pid=int(me["id"]), jid=int(game["judge_pid"]): self._apples_submit_card(gid, rn, pid, jid),
@@ -966,41 +1074,21 @@ class GameSpaceApp(ctk.CTk):
 
         if game["phase"] == "judging":
             if not is_judge:
-                wait = ctk.CTkLabel(
-                    self.action_frame,
-                    text="Waiting for the judge to pick a winner. Press Refresh State to hear updates.",
-                    justify="left",
-                    anchor="w",
-                    wraplength=620,
-                )
-                wait.pack(fill="x", pady=(12, 0))
+                ctk.CTkLabel(self.action_frame, text="Waiting for the judge to pick a winner. Press Refresh State to hear updates.", justify="left", anchor="w", wraplength=620).pack(fill="x", pady=(12, 0))
             else:
-                judge_title = ctk.CTkLabel(self.action_frame, text="Judge submissions", font=ctk.CTkFont(size=18, weight="bold"))
-                judge_title.pack(anchor="w", pady=(12, 6))
+                ctk.CTkLabel(self.action_frame, text="Judge submissions", font=ctk.CTkFont(size=18, weight="bold")).pack(anchor="w", pady=(12, 6))
                 submissions = apples_service.list_submissions(game_id, round_num)
                 if not submissions:
-                    empty = ctk.CTkLabel(self.action_frame, text="No submissions yet.", justify="left", anchor="w")
-                    empty.pack(fill="x")
+                    ctk.CTkLabel(self.action_frame, text="No submissions yet.", justify="left", anchor="w").pack(fill="x")
                 else:
                     for index, card in enumerate(submissions, start=1):
-                        button = ctk.CTkButton(
-                            self.action_frame,
-                            text=f"Winner option {index}: {card}",
-                            command=lambda selected=card: self._apples_pick_winner(game_id, round_num, int(me["id"]), selected),
-                        )
-                        button.pack(fill="x", pady=3)
-                        self._register_action_button(button, card)
+                        btn = ctk.CTkButton(self.action_frame, text=f"Winner option {index}: {card}", command=lambda selected=card: self._apples_pick_winner(game_id, round_num, int(me["id"]), selected))
+                        btn.pack(fill="x", pady=3)
+                        self._register_action_button(btn, card)
             return
 
         if game["phase"] == "game_over":
-            over = ctk.CTkLabel(
-                self.action_frame,
-                text="Game over. Review the scores above or create a new game.",
-                justify="left",
-                anchor="w",
-                wraplength=620,
-            )
-            over.pack(fill="x", pady=(12, 0))
+            ctk.CTkLabel(self.action_frame, text="Game over. Review the scores above or create a new game.", justify="left", anchor="w", wraplength=620).pack(fill="x", pady=(12, 0))
 
     def _current_apples_game(self):
         code = self.apples_code_var.get().strip().upper()
@@ -1063,10 +1151,8 @@ class GameSpaceApp(ctk.CTk):
             return
         try:
             apples_service.submit_card(game_id, round_num, player_id, judge_id, self.apples_selected_card)
-        except Exception as exc:
-            self.speech.announce(str(exc), interrupt=True, force=True)
-            messagebox.showerror("Submit failed", str(exc))
-            return
+        except Exception:
+            pass
         submitted_card = self.apples_selected_card
         self.apples_selected_card = None
         self.select_page("apples", announce=False)

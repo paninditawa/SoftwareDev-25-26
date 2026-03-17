@@ -1,39 +1,34 @@
+from __future__ import annotations
+
 import argparse
 import os
-import pygame
 import socket
+import sys
 import threading
 import time
-import numpy as np
-import sys
 from pathlib import Path
 
-# Ensure the repo root (where `tts.py` lives) is on sys.path so the shared TTS helper can be imported.
-# This walks up the directory tree until it finds tts.py.
+import numpy as np
+import pygame
+
+# Walk up to find tts.py so the shared helper can be imported regardless of CWD.
 _repo_root = Path(__file__).resolve()
 while _repo_root != _repo_root.parent:
     if (_repo_root / "tts.py").exists():
         break
     _repo_root = _repo_root.parent
-
 if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
-# Cross-platform TTS helper
 try:
     from tts import speak as _tts_speak, speak_interrupt as _tts_speak_interrupt
 except ImportError:
-    def _tts_speak(text: str):
-        print(text)
+    def _tts_speak(text: str): print(text)
+    def _tts_speak_interrupt(text: str): print(text)
 
-    def _tts_speak_interrupt(text: str):
-        print(text)
-
-# Track the most recent spoken text so we can show it on-screen (useful if audio isn't audible).
 last_spoken_text = ""
 
-def tts_speak(text: str, interrupt: bool = False):
-    """Speak text while also recording it for on-screen display."""
+def speak(text: str, interrupt: bool = False):
     global last_spoken_text
     last_spoken_text = text
     if interrupt:
@@ -41,158 +36,229 @@ def tts_speak(text: str, interrupt: bool = False):
     else:
         _tts_speak(text)
 
-
-# Keep existing code paths working with speak()/speak_interrupt().
-# This allows the rest of the file to continue using `speak()` without changes.
-speak = tts_speak
-speak_interrupt = lambda text: tts_speak(text, interrupt=True)
+speak_interrupt = lambda text: speak(text, interrupt=True)
 
 HOST = "127.0.0.1"
 PORT = 5555
 BOARD_SIZE = 8
-WINDOW_WIDTH = 800
-WINDOW_HEIGHT = 440
-CELL = min(WINDOW_WIDTH // (BOARD_SIZE * 2), WINDOW_HEIGHT // BOARD_SIZE)
+WINDOW_WIDTH = 860
+WINDOW_HEIGHT = 480
+CELL = min(WINDOW_WIDTH // (BOARD_SIZE * 2 + 2), WINDOW_HEIGHT // (BOARD_SIZE + 2))
 
-pygame.init()
-pygame.mixer.init(frequency=44100, size=-16, channels=2)
-screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-pygame.display.set_caption("EchoFleet Battleship")
-font = pygame.font.SysFont(None, 24)
-
-# Simple tone generator for feedback.
-def generate_tone(freq, duration=0.3, volume=0.5):
-    sample_rate = 44100
-    t = np.linspace(0, duration, int(sample_rate * duration), False)
-    tone = np.sin(freq * t * 2 * np.pi)
-    audio = (tone * 32767 * volume).astype(np.int16)
-    stereo_audio = np.column_stack((audio, audio))
-    return pygame.sndarray.make_sound(stereo_audio)
-
-HIT_SOUND = generate_tone(1000)
-MISS_SOUND = generate_tone(300)
-USED_SOUND = generate_tone(150, 0.15)
-WIN_SOUND = generate_tone(1200, 0.6)
+LEFT_OFFSET_X  = 20
+RIGHT_OFFSET_X = LEFT_OFFSET_X + BOARD_SIZE * CELL + 40
+BOARD_OFFSET_Y = 40
 
 SHIP_ORDER = [
     ("Aircraft Carrier", 5),
-    ("Battleship", 4),
-    ("Cruiser", 3),
-    ("Submarine", 3),
-    ("Destroyer", 2),
+    ("Battleship",       4),
+    ("Cruiser",          3),
+    ("Submarine",        3),
+    ("Destroyer",        2),
 ]
+
+C_BG      = (15,  25,  45)
+C_GRID    = (40,  60,  90)
+C_SHIP    = (100, 120, 150)
+C_PREVIEW = (60,  120, 200, 140)
+C_BAD     = (200,  60,  60, 140)
+C_SELECT  = (50,  170, 255)
+C_HIT     = (210,  50,  50)
+C_MISS    = (200, 200, 220)
+C_TEXT    = (220, 230, 245)
+C_DIM     = (120, 140, 170)
+C_LABEL   = (150, 180, 220)
+
+pygame.init()
+pygame.mixer.init(frequency=44100, size=-16, channels=2)
+
+def _tone(freq: float, duration: float = 0.25, volume: float = 0.55) -> pygame.mixer.Sound:
+    sr = 44100
+    t  = np.linspace(0, duration, int(sr * duration), False)
+    wave = np.sin(freq * t * 2 * np.pi) * np.exp(-t * 3)
+    audio = (wave * 32767 * volume).astype(np.int16)
+    return pygame.sndarray.make_sound(np.column_stack((audio, audio)))
+
+SND_HIT  = _tone(980,  0.30)
+SND_MISS = _tone(280,  0.25)
+SND_SINK = _tone(1200, 0.50)
+SND_WIN  = _tone(1400, 0.70)
+SND_LOSE = _tone(200,  0.70)
+SND_MOVE = _tone(600,  0.08, 0.25)
+SND_USED = _tone(150,  0.15, 0.35)
+SND_BAD  = _tone(180,  0.12, 0.40)
 
 
 def parse_args():
     p = argparse.ArgumentParser(description="Battleship client")
-    p.add_argument("--host", default=HOST, help="Server IP / host")
-    p.add_argument("--port", type=int, default=PORT, help="Server port")
+    p.add_argument("--host",         default=HOST)
+    p.add_argument("--port",         type=int, default=PORT)
+    p.add_argument("--user-id",      default="")
+    p.add_argument("--username",     default="Player")
+    p.add_argument("--launcher-pid", type=int, default=0)
     return p.parse_args()
 
 args = parse_args()
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.connect((args.host, args.port))
-# Server sends a welcome line like "PLAYER 0"; parse player ID.
 welcome = sock.recv(1024).decode().strip()
-if welcome.startswith("PLAYER"):
-    try:
-        player_id = int(welcome.split()[1])
-    except Exception:
-        player_id = 0
-else:
-    try:
-        player_id = int(welcome)
-    except Exception:
-        player_id = 0
-print(f"Connected as Player {player_id} to {args.host}:{args.port}")
-speak(f"Connected as player {player_id}")
+try:
+    player_id = int(welcome.split()[-1])
+except Exception:
+    player_id = 0
 
+speak(f"Connected as player {player_id + 1}. Arrow keys to adjust each ship, R to rotate, Enter to confirm.")
+
+# ---------------------------------------------------------------------------
 # Game state
-phase = "placement"  # or "battle"
-placed_count = 0  # how many ships have been successfully placed
-orientation = "H"
-own_ships = [[False] * BOARD_SIZE for _ in range(BOARD_SIZE)]
-hits_on_me = [[None] * BOARD_SIZE for _ in range(BOARD_SIZE)]
-hits_on_opponent = [[None] * BOARD_SIZE for _ in range(BOARD_SIZE)]
+# ---------------------------------------------------------------------------
+phase        = "placement"
+placed_count = 0
+orientation  = "H"
+
+own_ships        = [[False] * BOARD_SIZE for _ in range(BOARD_SIZE)]
+hits_on_me       = [[None]  * BOARD_SIZE for _ in range(BOARD_SIZE)]
+hits_on_opponent = [[None]  * BOARD_SIZE for _ in range(BOARD_SIZE)]
 
 selected_row = 0
 selected_col = 0
 
-# Store the coordinates/orientation of the last ship placement request so we can
-# mark it correctly once the server confirms placement.
-pending_placement_row = None
-pending_placement_col = None
-pending_placement_orientation = None
-pending_ship_index = None
+pending_row    = None
+pending_col    = None
+pending_orient = None
+pending_index  = None
 
-lock = threading.Lock()
-my_turn = False
-ready = False
-opponent_ready = False
+lock                    = threading.Lock()
+my_turn                 = False
+ready                   = False
+opponent_ready          = False
 awaiting_place_response = False
-last_place_request_time = 0.0
-last_server_line = ""
-last_send_line = ""
-last_send_error = ""
-server_connected = True
-server_error = ""
+last_place_time         = 0.0
+server_connected        = True
+server_error            = ""
+game_over_message       = ""
+i_won                   = False
+_place_ok_count         = 0
 
-# Game over state
-game_over_message = ""
+# ---------------------------------------------------------------------------
+# Random layout — generated once at startup, player nudges before confirming
+# ---------------------------------------------------------------------------
 
+def _make_random_layout() -> list[tuple[int, int, str]]:
+    import random
+    board  = [[False] * BOARD_SIZE for _ in range(BOARD_SIZE)]
+    result = []
+    for _, length in SHIP_ORDER:
+        for _ in range(1000):
+            orient = random.choice(("H", "V"))
+            row    = random.randint(0, BOARD_SIZE - 1)
+            col    = random.randint(0, BOARD_SIZE - 1)
+            coords = (
+                [(row, col + i) for i in range(length)] if orient == "H"
+                else [(row + i, col) for i in range(length)]
+            )
+            if any(r >= BOARD_SIZE or c >= BOARD_SIZE for r, c in coords):
+                continue
+            if any(board[r][c] for r, c in coords):
+                continue
+            for r, c in coords:
+                board[r][c] = True
+            result.append((row, col, orient))
+            break
+    return result
 
-def describe_status():
-    if phase == "placement":
-        if awaiting_place_response:
-            return "Waiting for server to confirm placement (press space to retry)."
-        if placed_count < len(SHIP_ORDER):
-            ship_name, ship_len = SHIP_ORDER[placed_count]
-            return f"Placing {ship_name} ({ship_len}) orientation {orientation}. Press R to rotate."
-        return "All ships placed. Waiting for opponent."
-    if phase == "waiting":
-        return "Waiting for opponent to finish placement."
-    if phase == "game_over":
-        return "Game over: press R to rematch or Q to quit."
-    return "Your turn" if my_turn else "Opponent's turn"
+_layout = _make_random_layout()
 
+# ---------------------------------------------------------------------------
+# Placement helpers
+# ---------------------------------------------------------------------------
 
-def send_line(line: str):
-    global last_send_line, last_send_error
-    last_send_line = line
-    last_send_error = ""
-    try:
-        print(">>", line)
-        sock.sendall((line + "\n").encode())
-    except Exception as e:
-        last_send_error = str(e)
-        print("Send failed:", e)
+def _ship_coords(ship_index: int, row: int, col: int, orient: str) -> list[tuple[int, int]]:
+    _, length = SHIP_ORDER[ship_index]
+    return (
+        [(row, col + i) for i in range(length)] if orient == "H"
+        else [(row + i, col) for i in range(length)]
+    )
 
+def _placement_valid(ship_index: int, row: int, col: int, orient: str) -> bool:
+    coords = _ship_coords(ship_index, row, col, orient)
+    if any(r < 0 or r >= BOARD_SIZE or c < 0 or c >= BOARD_SIZE for r, c in coords):
+        return False
+    # Only check against already-confirmed ships, not the current one.
+    confirmed: set[tuple[int, int]] = set()
+    for i in range(placed_count):
+        confirmed.update(_ship_coords(i, *_layout[i][:2], _layout[i][2]))
+    return not any(coord in confirmed for coord in coords)
 
-def mark_ship_placement(ship_index: int, row: int, col: int, orient: str):
-    name, length = SHIP_ORDER[ship_index]
-    coords = []
-    if orient == "H":
-        coords = [(row, col + i) for i in range(length)]
-    else:
-        coords = [(row + i, col) for i in range(length)]
-    for r, c in coords:
+def _mark_confirmed(ship_index: int) -> None:
+    for r, c in _ship_coords(ship_index, *_layout[ship_index][:2], _layout[ship_index][2]):
         if 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
             own_ships[r][c] = True
 
+def _sync_cursor_to_ship() -> None:
+    global selected_row, selected_col, orientation
+    if placed_count < len(SHIP_ORDER):
+        selected_row, selected_col, orientation = _layout[placed_count]
 
-def listen_server():
-    global my_turn, phase, ready, opponent_ready, placed_count, awaiting_place_response
-    global pending_placement_row, pending_placement_col, pending_placement_orientation, pending_ship_index
-    global own_ships, hits_on_me, hits_on_opponent, selected_row, selected_col, orientation
-    global server_connected, server_error, game_over_message
+_sync_cursor_to_ship()
+
+# ---------------------------------------------------------------------------
+# Network
+# ---------------------------------------------------------------------------
+
+def send_line(line: str) -> None:
+    try:
+        sock.sendall((line + "\n").encode())
+    except Exception as e:
+        print("Send failed:", e)
+
+def report_win() -> None:
+    if not args.user_id:
+        return
+    try:
+        sys.path.insert(0, str(_repo_root))
+        from launcher.scoreboard import Scoreboard
+        sb = Scoreboard.from_workspace(_repo_root)
+        sb.record_win(args.user_id, args.username, "battleship")
+    except Exception as exc:
+        print(f"scoreboard write failed: {exc}")
+
+# ---------------------------------------------------------------------------
+# Status
+# ---------------------------------------------------------------------------
+
+def describe_status() -> str:
+    if phase == "placement":
+        if awaiting_place_response:
+            return "Confirming placement…"
+        if placed_count < len(SHIP_ORDER):
+            name, ln = SHIP_ORDER[placed_count]
+            return f"Placing {name} (len {ln}) — arrows to nudge, R to rotate, Enter to confirm"
+        return "All ships placed. Waiting for opponent."
+    if phase == "waiting":
+        return "Waiting for opponent."
+    if phase == "game_over":
+        return f"{game_over_message}  —  R to rematch, Q to quit"
+    return "YOUR TURN — arrows to aim, Enter or Space to fire" if my_turn else "Opponent's turn…"
+
+# ---------------------------------------------------------------------------
+# Server listener
+# ---------------------------------------------------------------------------
+
+def listen_server() -> None:
+    global my_turn, phase, ready, opponent_ready, placed_count
+    global awaiting_place_response, pending_row, pending_col, pending_orient, pending_index
+    global own_ships, hits_on_me, hits_on_opponent, server_connected, server_error
+    global game_over_message, i_won, _place_ok_count, _layout
+
     buffer = ""
     while True:
         try:
             data = sock.recv(1024).decode()
             if not data:
                 server_connected = False
-                server_error = "Server disconnected"
+                server_error = "Server disconnected."
                 break
             buffer += data
             while "\n" in buffer:
@@ -203,13 +269,11 @@ def listen_server():
 
                 with lock:
                     parts = line.split()
-                    cmd = parts[0].upper()
-                    last_server_line = line
-                    print("<<", line)
+                    cmd   = parts[0].upper()
 
                     if cmd == "START":
                         phase = "battle"
-                        speak("Both players ready. Battle begins.")
+                        speak("Game on.")
 
                     elif cmd == "YOUR_TURN":
                         my_turn = True
@@ -217,278 +281,261 @@ def listen_server():
 
                     elif cmd == "OPPONENT_TURN":
                         my_turn = False
-                        speak("Opponent's turn.")
 
                     elif cmd == "READY_OK":
                         ready = True
                         phase = "waiting"
                         speak("Ready. Waiting for opponent.")
 
-                    elif cmd == "WAITING_FOR_OPPONENT":
-                        speak("Waiting for opponent to finish placing ships.")
-
                     elif cmd == "OPPONENT_READY":
                         opponent_ready = True
-                        speak("Opponent is ready.")
 
                     elif cmd == "RESET":
-                        # Server requested a new game - reset local state.
-                        phase = "placement"
+                        phase        = "placement"
                         placed_count = 0
-                        orientation = "H"
-                        own_ships = [[False] * BOARD_SIZE for _ in range(BOARD_SIZE)]
-                        hits_on_me = [[None] * BOARD_SIZE for _ in range(BOARD_SIZE)]
-                        hits_on_opponent = [[None] * BOARD_SIZE for _ in range(BOARD_SIZE)]
-                        selected_row = 0
-                        selected_col = 0
-                        ready = False
-                        opponent_ready = False
-                        my_turn = False
+                        orientation  = "H"
+                        own_ships        = [[False] * BOARD_SIZE for _ in range(BOARD_SIZE)]
+                        hits_on_me       = [[None]  * BOARD_SIZE for _ in range(BOARD_SIZE)]
+                        hits_on_opponent = [[None]  * BOARD_SIZE for _ in range(BOARD_SIZE)]
+                        ready = opponent_ready = my_turn = False
                         awaiting_place_response = False
-                        pending_placement_row = None
-                        pending_placement_col = None
-                        pending_placement_orientation = None
-                        pending_ship_index = None
+                        pending_row = pending_col = pending_orient = pending_index = None
                         game_over_message = ""
-                        speak("Starting a new game. Place your ships.")
+                        i_won = False
+                        _place_ok_count = 0
+                        _layout = _make_random_layout()
+                        _sync_cursor_to_ship()
+                        speak("New game. Arrow keys to adjust ships, Enter to confirm each one.")
 
                     elif cmd == "PLACE_OK":
-                        # Confirm the ship we placed (optimistic placement already advanced the UI)
-                        ship_index = pending_ship_index if pending_ship_index is not None else placed_count
-                        if pending_placement_row is not None:
-                            mark_ship_placement(
-                                ship_index,
-                                pending_placement_row,
-                                pending_placement_col,
-                                pending_placement_orientation,
-                            )
-                        else:
-                            mark_ship_placement(ship_index, selected_row, selected_col, orientation)
-                        speak("Ship placed.")
+                        _place_ok_count += 1
+                        _mark_confirmed(pending_index if pending_index is not None else placed_count - 1)
                         awaiting_place_response = False
-                        pending_placement_row = None
-                        pending_placement_col = None
-                        pending_placement_orientation = None
-                        pending_ship_index = None
-                        if placed_count >= len(SHIP_ORDER):
+                        pending_row = pending_col = pending_orient = pending_index = None
+                        if _place_ok_count >= len(SHIP_ORDER) and not ready:
                             send_line("READY")
 
-                    elif cmd == "ALL_SHIPS_PLACED":
-                        speak("All ships placed.")
-
                     elif cmd == "PLACE_ERR":
-                        # Rollback optimistic placement if we already advanced the UI
-                        if pending_ship_index is not None and placed_count > pending_ship_index:
-                            placed_count = pending_ship_index
+                        if pending_index is not None and placed_count > pending_index:
+                            placed_count = pending_index
                         awaiting_place_response = False
-                        pending_ship_index = None
-                        pending_placement_row = None
-                        pending_placement_col = None
-                        pending_placement_orientation = None
-                        message = " ".join(parts[1:])
-                        speak(f"Placement error: {message}")
+                        pending_index = pending_row = pending_col = pending_orient = None
+                        speak("Can't place there. Move the ship and try again.")
 
                     elif cmd == "RESULT":
-                        if parts[1] == "MISS":
+                        sub = parts[1] if len(parts) > 1 else ""
+                        if sub == "MISS":
                             r, c = int(parts[2]), int(parts[3])
                             hits_on_opponent[r][c] = "miss"
-                            MISS_SOUND.play()
-                            speak("Miss")
-                        elif parts[1] == "HIT":
+                            SND_MISS.play()
+                        elif sub == "HIT":
                             r, c = int(parts[2]), int(parts[3])
-                            ship = parts[4]
                             sunk = parts[5] == "True"
                             hits_on_opponent[r][c] = "hit"
-                            HIT_SOUND.play()
-                            if sunk:
-                                speak(f"Hit. You sunk the {ship}.")
-                            else:
-                                speak(f"Hit {ship}.")
-                        elif parts[1] == "USED":
-                            USED_SOUND.play()
-                            speak("Already fired there.")
-                        elif parts[1] == "WIN":
-                            WIN_SOUND.play()
+                            (SND_SINK if sunk else SND_HIT).play()
+                        elif sub == "USED":
+                            SND_USED.play()
+                        elif sub == "WIN":
+                            i_won = True
                             game_over_message = "You win!"
                             phase = "game_over"
-                            speak(f"{game_over_message} Press R to rematch or Q to quit.")
-                        elif parts[1] == "LOSE":
-                            WIN_SOUND.play()
+                            SND_WIN.play()
+                            speak("You win!")
+                            threading.Thread(target=report_win, daemon=True).start()
+                        elif sub == "LOSE":
                             game_over_message = "You lose."
                             phase = "game_over"
-                            speak(f"{game_over_message} Press R to rematch or Q to quit.")
+                            SND_LOSE.play()
+                            speak("You lose.")
 
                     elif cmd == "OPPONENT_FIRE":
                         r, c = int(parts[1]), int(parts[2])
-                        hit_miss = parts[3]
-                        if hit_miss == "HIT":
-                            hits_on_me[r][c] = True
-                            speak("Opponent hit your ship.")
-                        else:
-                            hits_on_me[r][c] = False
-                            speak("Opponent missed.")
-
-                    else:
-                        # Helpful debug output if server sends something unexpected.
-                        print("Unknown server message:", line)
-                        speak(f"Server said: {line}")
+                        hits_on_me[r][c] = True if parts[3] == "HIT" else False
 
         except Exception as e:
             server_connected = False
             server_error = str(e)
-            print("Server connection lost:", e)
             break
 
 
 threading.Thread(target=listen_server, daemon=True).start()
 
-speak("Battleship. Use arrow keys to move, R to rotate during placement, and Enter or Space to confirm.")
+# ---------------------------------------------------------------------------
+# Drawing
+# ---------------------------------------------------------------------------
 
+screen  = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+font_sm = pygame.font.SysFont(None, 20)
+font_md = pygame.font.SysFont(None, 26)
+pygame.display.set_caption("EchoFleet Battleship")
+
+
+def draw_grid(offset_x: int, hits, show_ships: bool) -> None:
+    for row in range(BOARD_SIZE):
+        for col in range(BOARD_SIZE):
+            rect = pygame.Rect(offset_x + col * CELL, BOARD_OFFSET_Y + row * CELL, CELL, CELL)
+            pygame.draw.rect(screen, C_GRID, rect, 1)
+            if show_ships and own_ships[row][col]:
+                pygame.draw.rect(screen, C_SHIP, rect.inflate(-4, -4), border_radius=2)
+            if hits is not None:
+                cell = hits[row][col]
+                if cell == "hit" or cell is True:
+                    pygame.draw.circle(screen, C_HIT,  rect.center, CELL // 3)
+                elif cell == "miss" or cell is False:
+                    pygame.draw.circle(screen, C_MISS, rect.center, CELL // 4)
+
+
+def draw_placement_preview() -> None:
+    if phase != "placement" or placed_count >= len(SHIP_ORDER):
+        return
+    valid   = _placement_valid(placed_count, selected_row, selected_col, orientation)
+    colour  = C_PREVIEW if valid else C_BAD
+    surface = pygame.Surface((CELL, CELL), pygame.SRCALPHA)
+    surface.fill(colour)
+    for r, c in _ship_coords(placed_count, selected_row, selected_col, orientation):
+        if 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
+            rect = pygame.Rect(LEFT_OFFSET_X + c * CELL, BOARD_OFFSET_Y + r * CELL, CELL, CELL)
+            screen.blit(surface, rect.topleft)
+
+
+def draw_cursor() -> None:
+    if phase == "placement":
+        ox = LEFT_OFFSET_X
+    elif phase in ("battle", "game_over"):
+        ox = RIGHT_OFFSET_X
+    else:
+        return
+    rect = pygame.Rect(ox + selected_col * CELL, BOARD_OFFSET_Y + selected_row * CELL, CELL, CELL)
+    pygame.draw.rect(screen, C_SELECT, rect, 3)
+
+
+def draw_labels() -> None:
+    for i in range(BOARD_SIZE):
+        ch = chr(ord("A") + i)
+        for ox in (LEFT_OFFSET_X, RIGHT_OFFSET_X):
+            lbl = font_sm.render(ch, True, C_DIM)
+            screen.blit(lbl, (ox + i * CELL + CELL // 2 - 5, BOARD_OFFSET_Y - 18))
+        for ox in (LEFT_OFFSET_X - 18, RIGHT_OFFSET_X - 18):
+            lbl = font_sm.render(str(i + 1), True, C_DIM)
+            screen.blit(lbl, (ox, BOARD_OFFSET_Y + i * CELL + CELL // 2 - 8))
+    screen.blit(font_md.render("YOUR SHIPS", True, C_LABEL), (LEFT_OFFSET_X,  BOARD_OFFSET_Y - 26))
+    screen.blit(font_md.render("FIRE HERE",  True, C_LABEL), (RIGHT_OFFSET_X, BOARD_OFFSET_Y - 26))
+
+
+def draw_status() -> None:
+    y = BOARD_OFFSET_Y + BOARD_SIZE * CELL + 10
+    screen.blit(font_md.render(describe_status(), True, C_TEXT), (20, y))
+    if last_spoken_text:
+        screen.blit(font_sm.render(f"↗ {last_spoken_text}", True, C_DIM), (20, y + 28))
+    if not server_connected:
+        screen.blit(font_sm.render(f"Disconnected: {server_error}", True, C_HIT), (20, y + 50))
+
+# ---------------------------------------------------------------------------
+# Main loop
+# ---------------------------------------------------------------------------
+
+clock   = pygame.time.Clock()
 running = True
 
 while running:
-    screen.fill((0, 0, 0))
+    screen.fill(C_BG)
+    draw_grid(LEFT_OFFSET_X,  hits_on_me,       show_ships=True)
+    draw_grid(RIGHT_OFFSET_X, hits_on_opponent,  show_ships=False)
+    draw_placement_preview()
+    draw_cursor()
+    draw_labels()
+    draw_status()
+    pygame.display.flip()
+    clock.tick(60)
 
-    # Draw own grid on the left, opponent grid on the right
-    def draw_grid(offset_x: int, hits, show_ships: bool):
-        for x in range(BOARD_SIZE):
-            for y in range(BOARD_SIZE):
-                rect = pygame.Rect(offset_x + y * CELL, 10 + x * CELL, CELL, CELL)
-                pygame.draw.rect(screen, (50, 50, 50), rect, 1)
-
-                if show_ships and own_ships[x][y]:
-                    pygame.draw.rect(screen, (120, 120, 120), rect)
-
-                if hits is not None:
-                    cell = hits[x][y]
-                    if cell == "hit" or cell is True:
-                        pygame.draw.circle(screen, (200, 0, 0), rect.center, CELL // 4)
-                    elif cell == "miss" or cell is False:
-                        pygame.draw.circle(screen, (255, 255, 255), rect.center, CELL // 4)
-
-    draw_grid(20, hits_on_me, show_ships=True)
-    draw_grid(420, hits_on_opponent, show_ships=False)
-
-    # Preview current ship placement (blue translucent overlay)
-    if phase == "placement" and placed_count < len(SHIP_ORDER):
-        ship_name, ship_len = SHIP_ORDER[placed_count]
-        preview = pygame.Surface((CELL, CELL), pygame.SRCALPHA)
-        preview.fill((0, 0, 255, 100))
-        for i in range(ship_len):
-            r = selected_row + (i if orientation == "V" else 0)
-            c = selected_col + (i if orientation == "H" else 0)
-            if 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
-                rect = pygame.Rect(20 + c * CELL, 10 + r * CELL, CELL, CELL)
-                screen.blit(preview, rect.topleft)
-
-    # Selection highlight
-    selection_x = 20 if phase == "placement" else 420
-    hover_rect = pygame.Rect(selection_x + selected_col * CELL, 10 + selected_row * CELL, CELL, CELL)
-    pygame.draw.rect(screen, (0, 0, 150), hover_rect, 3)
-
-    status_text = describe_status()
-    status_surface = font.render(status_text, True, (255, 255, 255))
-    screen.blit(status_surface, (20, WINDOW_HEIGHT - 50))
-
-    if last_spoken_text:
-        spoken_surface = font.render(f"Spoke: {last_spoken_text}", True, (200, 200, 50))
-        screen.blit(spoken_surface, (20, WINDOW_HEIGHT - 30))
-
-    if game_over_message:
-        game_over_surface = font.render(game_over_message, True, (255, 255, 255))
-        screen.blit(game_over_surface, (20, WINDOW_HEIGHT - 10))
-
-    if last_server_line:
-        debug_surface = font.render(f"Server: {last_server_line}", True, (200, 200, 200))
-        screen.blit(debug_surface, (20, WINDOW_HEIGHT - 70))
-
-    if last_send_line:
-        debug_surface = font.render(f"Sent: {last_send_line}", True, (200, 200, 200))
-        screen.blit(debug_surface, (20, WINDOW_HEIGHT - 90))
-
-    if last_send_error:
-        debug_surface = font.render(f"Send error: {last_send_error}", True, (255, 100, 100))
-        screen.blit(debug_surface, (20, WINDOW_HEIGHT - 110))
-
-    if not server_connected:
-        debug_surface = font.render(f"Server disconnected: {server_error}", True, (255, 100, 100))
-        screen.blit(debug_surface, (20, WINDOW_HEIGHT - 130))
+    if awaiting_place_response and time.time() - last_place_time > 3:
+        awaiting_place_response = False
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_UP:
-                if selected_row > 0:
-                    selected_row -= 1
-                    speak_interrupt(f"Selected row {selected_row + 1}, column {selected_col + 1}")
-            elif event.key == pygame.K_DOWN:
-                if selected_row < BOARD_SIZE - 1:
-                    selected_row += 1
-                    speak_interrupt(f"Selected row {selected_row + 1}, column {selected_col + 1}")
-            elif event.key == pygame.K_LEFT:
-                if selected_col > 0:
-                    selected_col -= 1
-                    speak_interrupt(f"Selected row {selected_row + 1}, column {selected_col + 1}")
-            elif event.key == pygame.K_RIGHT:
-                if selected_col < BOARD_SIZE - 1:
-                    selected_col += 1
-                    speak_interrupt(f"Selected row {selected_row + 1}, column {selected_col + 1}")
-            elif event.key == pygame.K_r and phase == "placement":
-                orientation = "V" if orientation == "H" else "H"
-                speak(f"Orientation {orientation}")
-            elif event.key == pygame.K_r and phase == "game_over":
-                send_line("REMATCH")
-                game_over_message = "Rematch requested. Waiting for opponent."
-                speak(game_over_message)
-            elif event.key == pygame.K_t:
-                # Test audio output (plays a short tone)
-                tone = generate_tone(800, duration=0.2)
-                tone.play()
-                last_spoken_text = "Audio test tone"
-            elif event.key in (pygame.K_q, pygame.K_ESCAPE) and phase == "game_over":
-                # Quit the client (keep the server running)
-                send_line("QUIT")
-                running = False
-            elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                if phase == "placement":
-                    if not awaiting_place_response and placed_count < len(SHIP_ORDER):
-                        ship_name, _ = SHIP_ORDER[placed_count]
-                        pending_placement_row = selected_row
-                        pending_placement_col = selected_col
-                        pending_placement_orientation = orientation
-                        pending_ship_index = placed_count
-                        # Optimistically advance to next ship so the UI updates even if the server response is delayed.
-                        placed_count += 1
-                        # Send the ship index (0-4) to avoid spaces in the command
-                        send_line(f"PLACE {pending_ship_index} {selected_row} {selected_col} {orientation}")
-                        awaiting_place_response = True
-                        last_place_request_time = time.time()
-                        speak(f"Placing {ship_name} at row {selected_row + 1}, column {selected_col + 1} {orientation}")
-                    elif awaiting_place_response and pending_ship_index is not None and time.time() - last_place_request_time > 1:
-                        # Retry in case the server response was lost
-                        send_line(f"PLACE {pending_ship_index} {pending_placement_row} {pending_placement_col} {pending_placement_orientation}")
-                        last_place_request_time = time.time()
-                        speak("Retrying placement.")
-                    elif not ready and placed_count >= len(SHIP_ORDER):
-                        # All ships have been placed locally; tell the server we're ready.
-                        send_line("READY")
-                        speak("Ready. Waiting for opponent.")
-                elif phase == "game_over":
-                    # Ignore fire commands after game end.
-                    pass
+        if event.type != pygame.KEYDOWN:
+            continue
+
+        key = event.key
+
+        # Arrow keys
+        dr = dc = 0
+        if   key == pygame.K_UP:    dr = -1
+        elif key == pygame.K_DOWN:  dr =  1
+        elif key == pygame.K_LEFT:  dc = -1
+        elif key == pygame.K_RIGHT: dc =  1
+
+        if dr or dc:
+            SND_MOVE.play()
+            if phase == "placement" and placed_count < len(SHIP_ORDER):
+                _, length = SHIP_ORDER[placed_count]
+                nr = max(0, min(BOARD_SIZE - 1, selected_row + dr))
+                nc = max(0, min(BOARD_SIZE - 1, selected_col + dc))
+                # Clamp so the whole ship stays on the board.
+                if orientation == "H":
+                    nc = min(nc, BOARD_SIZE - length)
                 else:
-                    if my_turn:
-                        send_line(f"FIRE {selected_row} {selected_col}")
-                        speak(f"Firing at row {selected_row + 1}, column {selected_col + 1}")
+                    nr = min(nr, BOARD_SIZE - length)
+                selected_row, selected_col = nr, nc
+                _layout[placed_count] = (selected_row, selected_col, orientation)
+                speak_interrupt(f"Row {selected_row + 1}, column {selected_col + 1}")
+            elif phase == "battle":
+                selected_row = max(0, min(BOARD_SIZE - 1, selected_row + dr))
+                selected_col = max(0, min(BOARD_SIZE - 1, selected_col + dc))
+                speak_interrupt(f"Row {selected_row + 1}, {chr(ord('A') + selected_col)}")
+            continue
 
-    # If we haven't heard back from the server after a placement request, allow retry.
-    if awaiting_place_response and time.time() - last_place_request_time > 3:
-        awaiting_place_response = False
-        speak("No response from server. You can press space again to retry placement.")
+        if key == pygame.K_r:
+            if phase == "placement" and placed_count < len(SHIP_ORDER):
+                orientation = "V" if orientation == "H" else "H"
+                # Clamp after rotation so ship stays on board.
+                _, length = SHIP_ORDER[placed_count]
+                if orientation == "H":
+                    selected_col = min(selected_col, BOARD_SIZE - length)
+                else:
+                    selected_row = min(selected_row, BOARD_SIZE - length)
+                _layout[placed_count] = (selected_row, selected_col, orientation)
+                speak(f"Rotated to {orientation}")
+            elif phase == "game_over":
+                send_line("REMATCH")
+                speak("Rematch requested.")
 
-    pygame.display.flip()
+        elif key in (pygame.K_RETURN, pygame.K_SPACE):
+            if phase == "placement" and not awaiting_place_response and placed_count < len(SHIP_ORDER):
+                if _placement_valid(placed_count, selected_row, selected_col, orientation):
+                    pending_row    = selected_row
+                    pending_col    = selected_col
+                    pending_orient = orientation
+                    pending_index  = placed_count
+                    placed_count  += 1
+                    send_line(f"PLACE {pending_index} {pending_row} {pending_col} {pending_orient}")
+                    awaiting_place_response = True
+                    last_place_time = time.time()
+                    name, _ = SHIP_ORDER[pending_index]
+                    speak(f"{name} confirmed.")
+                    if placed_count < len(SHIP_ORDER):
+                        _sync_cursor_to_ship()
+                else:
+                    SND_BAD.play()
+                    speak("Can't place there.")
+            elif phase == "placement" and placed_count >= len(SHIP_ORDER) and not ready:
+                send_line("READY")
+                speak("Ready. Waiting for opponent.")
+            elif phase == "battle" and my_turn:
+                send_line(f"FIRE {selected_row} {selected_col}")
+                speak(f"Firing row {selected_row + 1}, {chr(ord('A') + selected_col)}.")
+
+        elif key in (pygame.K_q, pygame.K_ESCAPE) and phase == "game_over":
+            send_line("QUIT")
+            running = False
+
+        elif key == pygame.K_t:
+            SND_HIT.play()
 
 pygame.quit()
-sock.close()
+try:
+    sock.close()
+except Exception:
+    pass
