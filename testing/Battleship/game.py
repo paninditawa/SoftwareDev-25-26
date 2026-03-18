@@ -1,6 +1,12 @@
+"""
+Game logic for Battleship — EchoFleet.
+Handles ship placement, turn management, and fire processing.
+"""
+
 import random
 from typing import Dict, List, Optional, Set, Tuple
 
+# Board size and ship definitions
 BOARD_SIZE = 8
 SHIPS = [
     ("Aircraft Carrier", 5),
@@ -15,29 +21,51 @@ Coordinate = Tuple[int, int]
 
 class Ship:
     def __init__(self, name: str, length: int, coords: List[Coordinate]):
+        """
+        Represents a single ship on the board.
+
+        Params:
+        name (str) - ship name,
+        length (int) - number of cells,
+        coords (List[Coordinate]) - cells the ship occupies
+        """
         self.name = name
         self.length = length
         self.coords: Set[Coordinate] = set(coords)
         self.hits: Set[Coordinate] = set()
 
     def hit(self, coord: Coordinate) -> bool:
+        """
+        Registers a hit if the coordinate matches a ship cell.
+
+        Returns:
+        bool - True if it was a hit
+        """
         if coord in self.coords:
             self.hits.add(coord)
             return True
         return False
 
     def is_sunk(self) -> bool:
+        """Returns True if all cells have been hit."""
         return self.hits == self.coords
 
 
 class Game:
     def __init__(self):
+        """Initializes an empty game with two players, no ships placed."""
         self.ships: List[List[Ship]] = [[], []]
         self.shots: List[Set[Coordinate]] = [set(), set()]
         self.ready: List[bool] = [False, False]
         self.turn: int = 0
 
     def _ship_coords(self, row: int, col: int, length: int, orientation: str) -> Optional[List[Coordinate]]:
+        """
+        Calculates the list of coordinates a ship would occupy.
+
+        Returns:
+        List[Coordinate] or None if placement is out of bounds or orientation is invalid
+        """
         if orientation not in ("H", "V"):
             return None
         if orientation == "H":
@@ -50,6 +78,12 @@ class Game:
             return [(row + i, col) for i in range(length)]
 
     def place_ship(self, player: int, ship_name: str, row: int, col: int, orientation: str) -> Tuple[bool, str]:
+        """
+        Places a ship for the given player if the position is valid.
+
+        Returns:
+        Tuple of (success (bool), message (str))
+        """
         if self.ready[player]:
             return False, "Already ready"
 
@@ -64,6 +98,7 @@ class Game:
         if coords is None:
             return False, "Ship would be out of bounds or invalid orientation"
 
+        # Check for overlap with already placed ships
         occupied: Set[Coordinate] = set()
         for ship in self.ships[player]:
             occupied.update(ship.coords)
@@ -75,6 +110,12 @@ class Game:
         return True, "OK"
 
     def set_ready(self, player: int) -> Tuple[bool, str]:
+        """
+        Marks a player as ready if all ships have been placed.
+
+        Returns:
+        Tuple of (success (bool), message (str))
+        """
         if self.ready[player]:
             return False, "Already ready"
         if len(self.ships[player]) != len(SHIPS):
@@ -83,12 +124,21 @@ class Game:
         return True, "READY"
 
     def all_ready(self) -> bool:
+        """Returns True if both players are ready."""
         return self.ready[0] and self.ready[1]
 
     def is_player_turn(self, player: int) -> bool:
+        """Returns True if it is the given player's turn."""
         return self.turn == player
 
     def process_fire(self, player: int, row: int, col: int) -> Dict:
+        """
+        Processes a fire action from a player.
+
+        Returns:
+        Dict with status and hit details. Possible statuses:
+        NOT_READY, WAIT, USED, HIT, MISS
+        """
         if not self.all_ready():
             return {"status": "NOT_READY"}
 
@@ -113,6 +163,13 @@ class Game:
         return {"status": "MISS"}
 
     def ship_at(self, player: int, coord: Coordinate) -> Optional[str]:
+        """
+        Returns the name of the ship at a given coordinate, or None if empty.
+
+        Params:
+        player (int) - player index,
+        coord (Coordinate) - cell to check
+        """
         for ship in self.ships[player]:
             if coord in ship.coords:
                 return ship.name

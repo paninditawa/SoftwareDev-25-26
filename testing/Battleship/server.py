@@ -12,9 +12,11 @@ import traceback
 
 from game import Game, SHIPS
 
+# Network settings
 HOST = "0.0.0.0"
 PORT = 5555
 
+# Game state variables
 game = Game()
 connections: list[socket.socket | None] = [None, None]
 lock = threading.Lock()
@@ -22,12 +24,13 @@ lock = threading.Lock()
 game_over = False
 rematch_requests: set[int] = set()
 
-# Track how many players are currently connected so we know when to shut down.
+# Track connected players so we know when to shut down
 connected_count = 0
-connected_lock  = threading.Lock()
+connected_lock = threading.Lock()
 
 
 def parse_args() -> argparse.Namespace:
+    """Parses command-line arguments for host and port."""
     p = argparse.ArgumentParser(description="EchoFleet Battleship server")
     p.add_argument("--host", default=HOST)
     p.add_argument("--port", type=int, default=PORT)
@@ -35,6 +38,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def _send(player_id: int, message: str) -> None:
+    """Sends a newline-terminated message to a specific player."""
     conn = connections[player_id]
     if not conn:
         return
@@ -45,11 +49,20 @@ def _send(player_id: int, message: str) -> None:
 
 
 def broadcast(message: str) -> None:
+    """Sends a message to both players."""
     for i in range(2):
         _send(i, message)
 
 
 def handle_client(conn: socket.socket, player_id: int) -> None:
+    """
+    Handles all incoming messages from a single client in its own thread.
+    Processes placement, ready, fire, rematch, and quit commands.
+
+    Params:
+    conn (socket.socket) - the client connection,
+    player_id (int) - 0 or 1
+    """
     global game, game_over, rematch_requests, connected_count
 
     connections[player_id] = conn
@@ -70,11 +83,11 @@ def handle_client(conn: socket.socket, player_id: int) -> None:
                     continue
 
                 parts = line.split()
-                cmd   = parts[0].upper()
+                cmd = parts[0].upper()
 
                 if cmd == "PLACE" and len(parts) >= 5:
-                    row_str    = parts[-3]
-                    col_str    = parts[-2]
+                    row_str = parts[-3]
+                    col_str = parts[-2]
                     orient_str = parts[-1]
                     ship_token = " ".join(parts[1:-3])
                     try:
@@ -84,6 +97,7 @@ def handle_client(conn: socket.socket, player_id: int) -> None:
                         _send(player_id, "PLACE_ERR Invalid coordinates")
                         continue
 
+                    # Resolve ship name from index or raw token
                     ship_name: str | None = None
                     try:
                         idx = int(ship_token)
@@ -134,25 +148,25 @@ def handle_client(conn: socket.socket, player_id: int) -> None:
                         _send(player_id, "RESULT USED")
                         continue
                     if status == "MISS":
-                        _send(player_id,     f"RESULT MISS {row_i} {col_i}")
+                        _send(player_id, f"RESULT MISS {row_i} {col_i}")
                         _send(1 - player_id, f"OPPONENT_FIRE {row_i} {col_i} MISS")
                         _send(1 - player_id, "YOUR_TURN")
-                        _send(player_id,     "OPPONENT_TURN")
+                        _send(player_id, "OPPONENT_TURN")
                         continue
                     if status == "HIT":
                         ship = result.get("ship", "Ship")
                         sunk = result.get("sunk", False)
-                        win  = result.get("win",  False)
-                        _send(player_id,     f"RESULT HIT {row_i} {col_i} {ship} {sunk}")
+                        win = result.get("win", False)
+                        _send(player_id, f"RESULT HIT {row_i} {col_i} {ship} {sunk}")
                         _send(1 - player_id, f"OPPONENT_FIRE {row_i} {col_i} HIT {ship} {sunk}")
                         if win:
                             game_over = True
                             rematch_requests.clear()
-                            _send(player_id,     "RESULT WIN")
+                            _send(player_id, "RESULT WIN")
                             _send(1 - player_id, "RESULT LOSE")
                         else:
                             _send(1 - player_id, "YOUR_TURN")
-                            _send(player_id,     "OPPONENT_TURN")
+                            _send(player_id, "OPPONENT_TURN")
                         continue
 
                 elif cmd == "REMATCH":
@@ -162,6 +176,7 @@ def handle_client(conn: socket.socket, player_id: int) -> None:
                         rematch_requests.add(player_id)
                         _send(player_id, "REMATCH_OK")
                         if len(rematch_requests) == 2:
+                            # Both players agreed — reset the game
                             game = Game()
                             game_over = False
                             rematch_requests.clear()
@@ -192,6 +207,13 @@ def handle_client(conn: socket.socket, player_id: int) -> None:
 
 
 def start(host: str, port: int) -> None:
+    """
+    Binds the server socket, accepts both players, and starts their handler threads.
+
+    Params:
+    host (str) - address to bind to,
+    port (int) - port to listen on
+    """
     global connected_count
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -211,7 +233,7 @@ def start(host: str, port: int) -> None:
             connected_count += 1
         threading.Thread(target=handle_client, args=(conn, player_id), daemon=True).start()
 
-    # Keep the main thread alive (the daemon threads do the real work).
+    # Keep the main thread alive while daemon threads handle clients
     threading.Event().wait()
 
 
