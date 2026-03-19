@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pygame
 import numpy as np
-import sys
+import sys 
 import time
 import random
 import threading
