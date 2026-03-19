@@ -1,0 +1,359 @@
+HELLOWORLD GAMESPACE — MANUAL TESTING DOCUMENTATION
+Project: HelloWorld GameSpace
+Author:  [Your Name]
+Date:    [MM/DD/YYYY]
+
+This document covers the manual tests we ran to verify each game and
+the launcher. Since most of the games are UI and audio based, these
+tests were done by hand. Each test lists what we did and what we
+expected to happen. Automated unit tests are in test_game_logic.py
+and cover the backend logic for each game.
+
+----------------------------------------------------------------------
+SECTION 1 — LAUNCHER
+----------------------------------------------------------------------
+
+L-01 — Opening the app
+Run the launcher with: python launch_gamespace.py
+The login screen should appear with no terminal errors.
+
+L-02 — Logging in
+Enter a valid email and password and sign in.
+The main menu should load with all games listed on the left side.
+
+L-03 — Keyboard navigation
+Use the Up and Down arrows to move through the menu.
+Press F to hear the help message.
+TTS should announce each page name as you move. F should read the
+full control guide out loud.
+
+L-04 — Scoreboard page
+Navigate to Scoreboard and press Right Arrow.
+Click each game tab (Battleship, Hangman, etc.).
+A leaderboard should show for each game with rank, name, and wins.
+TTS should read the scores out loud.
+
+L-05 — Sign out
+Go to the Account page and click Sign Out.
+The launcher should return to the login screen.
+TTS should say "Signed out."
+
+----------------------------------------------------------------------
+SECTION 2 — BATTLESHIP
+----------------------------------------------------------------------
+
+BS-01 — Hosting a game
+Click Host Game on the Battleship page.
+A room code should appear. One client window should open — not two.
+TTS should read the room code letter by letter.
+
+BS-02 — Joining a game
+On a second machine, enter the host's room code and click Join Game.
+A second client window should open and connect to the server.
+Both players should be in the placement phase.
+
+BS-03 — Placing ships
+Use arrow keys to move the ship preview around. Press J to rotate.
+Press Enter to confirm each ship.
+The preview should move and change direction. Confirmed ships should
+show up on the YOUR SHIPS grid. All 5 ships should be placeable.
+
+BS-04 — Invalid placement
+Try to drag a ship so it would go off the edge of the board.
+Press Enter.
+The preview should turn red. A bad sound should play. TTS should say
+"Can't place there." The ship should not be placed.
+
+BS-05 — Firing
+After both players place their ships, use arrow keys to aim at the
+FIRE HERE grid and press Enter or Space.
+A hit should mark the cell with X and play a hit sound.
+A miss should mark it with O and play a miss sound.
+TTS should announce the result and the turn should switch.
+
+BS-06 — Winning
+Sink all of the opponent's ships.
+TTS should say "You win" and a win sound should play.
+The status bar should show the game over message.
+
+BS-07 — Rematch
+After a game ends, press J on both clients.
+Both clients should reset to the placement screen with new layouts.
+
+BS-08 — Display
+Look at the game window when it opens.
+The titles, column letters, and row numbers should all be visible
+with no overlapping. The grid should fit inside the window.
+
+BS-09 — Stopping the server
+Click Stop Game in the launcher while a game is running.
+The server should shut down and TTS should say "Game stopped."
+
+----------------------------------------------------------------------
+SECTION 3 — HANGMAN
+----------------------------------------------------------------------
+
+HM-01 — Opening the game
+Launch Hangman from the launcher.
+The game window should open and TTS should read the welcome message.
+
+HM-02 — Starting
+Press Enter or say "start."
+A word should be chosen and blank dashes should appear for each
+letter. TTS should say how many letters the word has.
+
+HM-03 — Correct guess (keyboard)
+Use Left and Right arrows to pick a letter in the word. Press Enter.
+The letter should fill in everywhere it appears. TTS should say how
+many times it appears. The button for that letter should disappear.
+
+HM-04 — Wrong guess
+Guess a letter not in the word.
+The hangman should gain a body part. TTS should say the letter isn't
+in the word and how many guesses are left.
+
+HM-05 — Voice guess
+Hold Space and say a letter name like "bee" for B or "bravo."
+The right letter should be guessed, same as pressing it on the keyboard.
+
+HM-06 — Winning
+Guess all the letters before 6 wrong guesses.
+TTS should announce "You won" and show how long it took.
+
+HM-07 — Losing
+Make 6 wrong guesses without finishing the word.
+TTS should reveal the correct word. The full hangman should be drawn.
+
+HM-08 — Status
+Press Up or Down, or say "status" during a game.
+TTS should read the current word progress, wrong guesses left, and
+all letters guessed so far.
+
+----------------------------------------------------------------------
+SECTION 4 — MAZE GAME
+----------------------------------------------------------------------
+
+MZ-01 — Opening the game
+Launch the Maze Game.
+The size selection screen should appear and TTS should read the
+welcome message and the default size (10x10).
+
+MZ-02 — Changing size
+Press Up and Down to change the maze size. Press Space.
+TTS should announce each size change. Space should speak the current
+size without changing it.
+
+MZ-03 — Starting a maze
+Press Enter to generate and start a maze.
+The maze should appear on screen with the player at the top-left and
+the exit marker at the bottom-right.
+
+MZ-04 — Moving
+Use arrow keys to walk through the maze.
+A move sound should play when moving into an open passage.
+A wall sound should play when trying to move into a wall.
+
+MZ-05 — Direction scan
+Press Space during a game.
+Four tones should play, one per direction. High means open, low means
+blocked. TTS should then speak position, open directions, and how far
+the exit is.
+
+MZ-06 — Winning
+Navigate to the exit cell.
+A win sound should play and TTS should say how many moves it took.
+
+----------------------------------------------------------------------
+SECTION 5 — MAD LIBS
+----------------------------------------------------------------------
+
+ML-01 — Opening the game
+Launch Voice Mad Libs.
+The game window should open and TTS should say to hold Space to speak
+and say "start" to begin.
+
+ML-02 — Picking a story
+Say "start" then say "1" or "adventure."
+The game should confirm the story and ask for the first word.
+
+ML-03 — Entering a word
+Say a word when prompted.
+TTS should confirm the word was saved and move to the next prompt.
+A success sound should play.
+
+ML-04 — Options command
+Say "options" during a word prompt.
+TTS should read a list of example words for that type of prompt.
+
+ML-05 — Finishing the story
+Provide a word for every prompt.
+The completed story should be read aloud. A win sound should play.
+The game should then offer to read it again, play again, or quit.
+
+ML-06 — Repeat prompt
+Say "repeat" during a prompt.
+TTS should read the current prompt again without moving forward.
+
+ML-07 — No microphone
+Launch the game with no mic connected or SpeechRecognition missing.
+TTS should explain voice is unavailable and give a reason.
+The game should not crash.
+
+----------------------------------------------------------------------
+SECTION 6 — ESCAPE ROOM
+----------------------------------------------------------------------
+
+ER-01 — Opening the game
+Launch Escape Room.
+TTS should read the welcome and tell the player to say "start."
+
+ER-02 — Picking a level
+Say "start" then "1" for The Haunted Library.
+TTS should read the level intro and describe the first room and puzzle.
+
+ER-03 — Solving a puzzle
+Say the correct answer (e.g. "map" for the door inscription).
+A success sound should play and TTS should confirm the answer and
+give the reward item.
+
+ER-04 — Wrong answer
+Say an incorrect answer.
+A failure sound should play and TTS should say "That's not it."
+
+ER-05 — Hint
+Say "hint" with an unsolved puzzle in the room.
+TTS should give a clue without giving away the full answer.
+
+ER-06 — Moving between rooms
+After solving what's needed, say a direction like "go north."
+TTS should describe the new room. Trying a locked room without the
+key should explain what item is needed.
+
+ER-07 — Inventory
+After picking up an item, say "inventory."
+TTS should list everything the player is carrying.
+
+ER-08 — Sound puzzle
+In the Reading Room, listen to the Chiming Clock puzzle and say "five."
+The right number of tones should play. Saying the correct count should
+solve the puzzle.
+
+ER-09 — Sequence puzzle
+In the submarine airlock, say "red," then "blue," then "green."
+Each correct step should be confirmed by TTS. The third step should
+solve the puzzle and give the reward.
+
+ER-10 — Completing a level
+Solve all puzzles and reach the escape room.
+A win sound should play and TTS should say the level is complete.
+
+ER-11 — All three levels
+Complete all three levels in any order.
+After the third, TTS should say all levels have been beaten.
+
+----------------------------------------------------------------------
+SECTION 7 — CONNECT FOUR
+----------------------------------------------------------------------
+
+C4-01 — Opening the game
+Launch Connect Four.
+The board and selector arrow should appear and TTS should read the
+tutorial prompt.
+
+C4-02 — Skipping the tutorial
+Press Enter when the skip prompt plays.
+TTS should say "Skipping full instructions. Let's play." The current
+column should be announced.
+
+C4-03 — Moving the selector
+Press Left and Right to move between columns.
+The arrow should move. TTS should announce the column number and what
+pieces are already in it from bottom to top.
+
+C4-04 — Dropping a piece
+Press Space to drop a piece in the selected column.
+The piece should land in the lowest open row. TTS should say which
+player dropped in which column. The turn should switch.
+
+C4-05 — Full column
+Fill a column with 6 pieces then press Space again.
+TTS should say "Column full. Choose another column." No piece should
+be added and the turn should not switch.
+
+C4-06 — Winning
+Get four pieces in a row in any direction.
+TTS should announce which player won. No more moves should be accepted.
+
+C4-07 — Restart
+Press Up at any point during or after a game.
+The board should reset and TTS should say "Game restarted."
+
+C4-08 — Help
+Press J during a game.
+TTS should read the full instructions including all controls.
+
+----------------------------------------------------------------------
+SECTION 8 — APPLES TO APPLES
+----------------------------------------------------------------------
+
+AA-01 — Creating a game
+Click Create Game on the Apples to Apples page.
+A six-character code should appear and the page should show the lobby.
+
+AA-02 — Joining a game
+Enter the code and a player name then click Join Game.
+The player should appear in the players list.
+
+AA-03 — Starting
+With at least two players joined, click Start Apples Game.
+The game should move to the selecting phase with a green prompt card
+and a judge assigned.
+
+AA-04 — Submitting a card
+As a non-judge, click a card to select it then click Submit.
+The card should be submitted. Once all non-judges submit, the phase
+should switch to judging.
+
+AA-05 — Judging
+As the judge, click the card you want to pick as the winner.
+That player should get a point. A new round should start with a new
+prompt and judge.
+
+AA-06 — Game over
+Play until someone reaches 5 points.
+The phase should change to game_over and the winner should show at
+the top of the scoreboard.
+
+----------------------------------------------------------------------
+SECTION 9 — COMBINED SYSTEM TESTS
+----------------------------------------------------------------------
+
+SYS-01 — Battleship multiplayer across two machines
+Host on one machine and join on another using the local IP address.
+Play a full game to completion. Both clients should stay in sync,
+turns should alternate correctly, and the win message should show on
+the right client.
+
+SYS-02 — Scoreboard after a win
+Win a game of Hangman or Battleship while logged in. Then open the
+Scoreboard page.
+The win should be recorded and the player's name and count should
+appear on the leaderboard.
+
+SYS-03 — Accessibility end-to-end
+With the monitor off or eyes closed, use only TTS audio to navigate
+to Hangman, start a game, guess letters by voice, and reach a result.
+Every step should be announced clearly enough to finish without
+looking at the screen.
+
+SYS-04 — Running multiple games at once
+Launch Hangman. While it's running, go back to the launcher and
+launch Maze Game.
+Both windows should run at the same time without crashing or
+affecting each other.
+
+SYS-05 — Escape key in every game
+Press Escape in each game: Hangman, Maze, Connect Four, Escape Room,
+Mad Libs, and the Battleship client.
+Each game should close cleanly and TTS should announce the exit.
+No orphan processes should remain running in the background.
