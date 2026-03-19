@@ -20,6 +20,7 @@ import time
 import queue
 import threading
 import math
+import re
 from array import array
 from pathlib import Path
 
@@ -143,7 +144,11 @@ def _report_win() -> None:
 
 
 def _extract_letter(text: str) -> str | None:
-    text = text.upper().strip()
+    text = re.sub(r"[^A-Z\s'-]", " ", text.upper())
+    text = text.replace("-", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return None
 
     spoken_names = {
         "AY": "A", "BEE": "B", "BE": "B", "SEE": "C", "CEE": "C", "SEA": "C", "DEE": "D",
@@ -153,6 +158,13 @@ def _extract_letter(text: str) -> str | None:
         "ESS": "S", "TEE": "T", "TEA": "T", "YOU": "U", "VEE": "V",
         "WEE": "W", "DOUBLE YOU": "W", "DOUBLE-YOU": "W",
         "EKS": "X", "EX": "X", "WHY": "Y", "ZED": "Z", "ZEE": "Z",
+        # NATO words help when recognition returns phonetic alphabet terms.
+        "ALFA": "A", "ALPHA": "A", "BRAVO": "B", "CHARLIE": "C", "DELTA": "D",
+        "ECHO": "E", "FOXTROT": "F", "GOLF": "G", "HOTEL": "H", "INDIA": "I",
+        "JULIETT": "J", "JULIET": "J", "KILO": "K", "LIMA": "L", "MIKE": "M",
+        "NOVEMBER": "N", "OSCAR": "O", "PAPA": "P", "ROMEO": "R", "SIERRA": "S",
+        "TANGO": "T", "UNIFORM": "U", "VICTOR": "V", "WHISKEY": "W", "XRAY": "X", "X RAY": "X",
+        "YANKEE": "Y", "ZULU": "Z",
     }
 
     for prefix in [
@@ -162,14 +174,28 @@ def _extract_letter(text: str) -> str | None:
         if text.startswith(prefix):
             text = text[len(prefix):].strip()
 
+    if not text:
+        return None
+
+    if text in spoken_names:
+        return spoken_names[text]
+
     if len(text) == 1 and text.isalpha():
         return text
 
-    for name, letter in spoken_names.items():
-        if text == name:
-            return letter
-
     words = text.split()
+
+    # Look for two-word names like "DOUBLE YOU" anywhere in the phrase.
+    for i in range(len(words) - 1):
+        pair = f"{words[i]} {words[i + 1]}"
+        if pair in spoken_names:
+            return spoken_names[pair]
+
+    # Then check single-word spoken names like "BEE" or "BRAVO".
+    for word in words:
+        if word in spoken_names:
+            return spoken_names[word]
+
     letter_words = [w for w in words if len(w) == 1 and w.isalpha()]
     if len(letter_words) == 1:
         return letter_words[0]
