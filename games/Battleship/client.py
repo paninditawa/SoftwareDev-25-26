@@ -268,7 +268,7 @@ def report_win() -> None:
         return
     try:
         sys.path.insert(0, str(_repo_root))
-        from launcher.scoreboard import Scoreboard
+        from launcher.services.leaderboard import Scoreboard
         sb = Scoreboard.from_workspace(_repo_root)
         sb.record_win(args.user_id, args.username, "battleship")
     except Exception as exc:

@@ -72,7 +72,7 @@ jobs:
               # import text-to-speech module from project
               import tts
               # import maze game module from its folder path
-              import testing.game_logic.maze_game
+              import games.game_logic.maze_game
               # print success text in workflow log
               print('imports OK')
           # if any import fails, handle + report error

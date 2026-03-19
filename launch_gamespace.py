@@ -6,7 +6,7 @@ import runpy
 import sys
 from pathlib import Path
 
-from launcher.app import main
+from launcher.ui.application import main
 
 
 REPO_ROOT = Path(__file__).resolve().parent

@@ -6,7 +6,7 @@ import secrets
 import sqlite3
 from pathlib import Path
 
-DATA_PATH = Path(__file__).resolve().parents[1] / "testing" / "apples" / "apples_min.db"
+DATA_PATH = Path(__file__).resolve().parents[2] / "games" / "apples" / "apples_min.db"
 HAND_SIZE = 10
 
 GREEN_BASE = [

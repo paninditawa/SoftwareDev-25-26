@@ -1,5 +1,5 @@
-"""Speech and focus announcements for the launcher UI.
-
+"""
+Speech and focus announcements for the launcher UI.
 This module uses the project's required `tts` helper for spoken output and
 tracks screen/focus context so announcements are useful to keyboard users.
 """
@@ -123,5 +123,5 @@ class SpeechManager:
             # announce label + hint for focused widget
             self.set_focus(label, hint)
 
-        # register focus handler a+ keep any existing handlers too
+        # register focus handler + keep any existing handlers too
         widget.bind("<FocusIn>", _on_focus, add="+")

@@ -23,7 +23,7 @@ Schema (run once in your Supabase SQL editor):
     create policy "own update" on scores for update using (auth.uid()::text = user_id);
 
 Usage:
-    from launcher.scoreboard import Scoreboard
+    from launcher.services.leaderboard import Scoreboard
     sb = Scoreboard.from_workspace(REPO_ROOT)
     sb.record_win(user_id, username, "battleship")
     rows = sb.top_scores("battleship", limit=10)

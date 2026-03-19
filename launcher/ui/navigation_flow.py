@@ -1,0 +1,275 @@
+from __future__ import annotations
+
+import tkinter as tk
+
+import customtkinter as ctk
+
+from launcher.ui.theme import (
+    APP_ACCENT,
+    APP_ACCENT_SOFT,
+    APP_ACCENT_STRONG,
+    APP_BORDER,
+    APP_FOCUS,
+    APP_MUTED,
+    APP_PANEL,
+    APP_PANEL_ALT,
+    APP_TEXT,
+    _font,
+)
+
+
+class NavigationMixin:
+    def _handle_pane_cycle(self, _delta: int):
+        if self.current_screen != "menu":
+            return None
+
+        focus = self.focus_get()
+        in_nav_pane = focus in self.nav_buttons.values()
+
+        if in_nav_pane:
+            if self._focus_first_action_target():
+                return "break"
+            self.speech.announce("No interactive controls are available in the details pane.", interrupt=True, force=True)
+            return "break"
+
+        self.nav_mode = True
+        self._sync_keyboard_focus()
+        return "break"
+
+    def _handle_left(self, _event=None):
+        if self.current_screen != "menu":
+            return None
+        if self._is_text_entry(self.focus_get()):
+            return None
+        self.nav_mode = True
+        self._sync_keyboard_focus()
+        return "break"
+
+    def _handle_right(self, _event=None):
+        if self.current_screen != "menu":
+            return None
+        if self._is_text_entry(self.focus_get()):
+            return None
+        if self.action_buttons:
+            self.nav_mode = False
+            self._sync_keyboard_focus()
+            return "break"
+        self.speech.announce("No action buttons on this page.", interrupt=True, force=True)
+        return "break"
+
+    def _handle_activate(self, _event=None):
+        if self.current_screen == "menu":
+            if self.nav_mode:
+                if self.action_buttons:
+                    self.nav_mode = False
+                    self.action_index = 0
+                    self._sync_keyboard_focus()
+                else:
+                    self.speech.announce("No action buttons on this page.", interrupt=True, force=True)
+                return "break"
+            if self.action_buttons:
+                self.action_buttons[self.action_index].invoke()
+                return "break"
+            return "break"
+
+        if self.current_screen == "login":
+            widget = self.focus_get()
+            if hasattr(widget, "invoke") and not self._is_text_entry(widget):
+                widget.invoke()
+                return "break"
+            if self.login_action_buttons:
+                self.login_action_buttons[self.login_action_index].invoke()
+                return "break"
+            return "break"
+
+        widget = self.focus_get()
+        if hasattr(widget, "invoke") and not self._is_text_entry(widget):
+            widget.invoke()
+            return "break"
+        return None
+
+    def _handle_vertical(self, delta: int):
+        if self.current_screen == "login":
+            self._move_login_focus_by(delta)
+            return "break"
+        if self.current_screen != "menu":
+            return None
+        if self._is_text_entry(self.focus_get()):
+            return None
+        if self.nav_mode:
+            return self._move_menu_selection(delta)
+        return self._move_action_selection(delta)
+
+    def _is_text_entry(self, widget) -> bool:
+        if widget is None:
+            return False
+        try:
+            return isinstance(widget, tk.Entry) or widget.winfo_class() in {"Entry", "TEntry"}
+        except Exception:
+            return False
+
+    def _move_menu_selection(self, delta: int):
+        if self.current_screen != "menu":
+            return None
+        if self._is_text_entry(self.focus_get()):
+            return None
+        current_index = self.menu_order.index(self.current_page_key)
+        new_index = (current_index + delta) % len(self.menu_order)
+        new_key = self.menu_order[new_index]
+        self.nav_index = new_index
+        self.select_page(new_key, announce=True)
+        self.nav_mode = True
+        self._sync_keyboard_focus()
+        return "break"
+
+    def _move_action_selection(self, delta: int):
+        if not self.action_buttons:
+            self.speech.announce("No action buttons on this page.", interrupt=True, force=True)
+            return "break"
+        if len(self.action_buttons) <= 1:
+            self.nav_mode = True
+            return self._move_menu_selection(delta)
+        self.action_index = (self.action_index + delta) % len(self.action_buttons)
+        self.nav_mode = False
+        self._sync_keyboard_focus()
+        return "break"
+
+    def _focus_first_action_target(self) -> bool:
+        for widget in self.action_widgets:
+            if widget is None:
+                continue
+            try:
+                if not widget.winfo_exists():
+                    continue
+            except Exception:
+                continue
+
+            if self._is_text_entry(widget):
+                widget.focus_set()
+                return True
+
+            if hasattr(widget, "invoke"):
+                try:
+                    if str(widget.cget("state")) == "disabled":
+                        continue
+                except Exception:
+                    pass
+                if widget in self.action_buttons:
+                    self.nav_mode = False
+                    self.action_index = self.action_buttons.index(widget)
+                    self._sync_keyboard_focus()
+                else:
+                    widget.focus_set()
+                return True
+
+        return False
+
+    def _style_nav_button(self, key: str, button: ctk.CTkButton) -> None:
+        selected = key == self.current_page_key
+        keyboard_cursor = self.nav_mode and selected
+        if keyboard_cursor:
+            button.configure(fg_color=APP_ACCENT_STRONG, border_width=3, border_color=APP_FOCUS)
+        elif selected:
+            button.configure(fg_color=APP_ACCENT, border_width=2, border_color=APP_BORDER)
+        else:
+            button.configure(fg_color=(APP_ACCENT_SOFT, APP_ACCENT), border_width=1, border_color=APP_BORDER)
+
+    def _style_action_buttons(self) -> None:
+        for index, button in enumerate(self.action_buttons):
+            keyboard_cursor = (not self.nav_mode) and index == self.action_index
+            if keyboard_cursor:
+                button.configure(border_width=3, border_color=APP_FOCUS)
+            else:
+                button.configure(border_width=1, border_color=APP_BORDER)
+
+    def _sync_keyboard_focus(self) -> None:
+        if self.current_screen != "menu":
+            return
+        for key, button in self.nav_buttons.items():
+            self._style_nav_button(key, button)
+        self._style_action_buttons()
+        if self.nav_mode:
+            button = self.nav_buttons.get(self.current_page_key)
+            if button is not None:
+                button.focus_set()
+                self.speech.set_focus(self.page_meta[self.current_page_key]["title"], self.page_meta[self.current_page_key]["hint"])
+            return
+        if self.action_buttons:
+            button = self.action_buttons[self.action_index]
+            button.focus_set()
+            text = button.cget("text")
+            self.speech.set_focus(text, "Press Enter to activate.")
+
+    def show_menu(self) -> None:
+        self.current_screen = "menu"
+        self._clear_content()
+        if self.auth_session is None:
+            self.show_login()
+            return
+
+        if self.current_page_key not in self.menu_order:
+            self.current_page_key = "home"
+
+        root = ctk.CTkFrame(self.content, fg_color="transparent")
+        root.pack(fill="both", expand=True)
+        root.grid_columnconfigure(0, weight=0)
+        root.grid_columnconfigure(1, weight=1)
+        root.grid_rowconfigure(0, weight=1)
+
+        nav = ctk.CTkFrame(root, width=300, fg_color=APP_PANEL_ALT, corner_radius=14, border_width=1, border_color=APP_BORDER)
+        nav.grid(row=0, column=0, sticky="nsw", padx=(16, 8), pady=16)
+        nav.grid_propagate(False)
+
+        details = ctk.CTkFrame(root, fg_color=APP_PANEL, corner_radius=14, border_width=2, border_color=APP_BORDER)
+        details.grid(row=0, column=1, sticky="nsew", padx=(8, 16), pady=16)
+        details.grid_columnconfigure(0, weight=1)
+        details.grid_rowconfigure(2, weight=1)
+
+        mode_prefix = "Signed in as"
+        display_name = self.auth_session.username or self.auth_session.email
+        welcome = ctk.CTkLabel(nav, text=f"{mode_prefix} {display_name}", wraplength=220, justify="left", text_color=APP_TEXT, font=_font(17, bold=True))
+        welcome.pack(anchor="w", padx=16, pady=(16, 10))
+
+        nav_text = "Use Up/Down arrows to change pages. Press F6 to jump between the page list and the details pane."
+        self._nav_help_label = ctk.CTkLabel(nav, text=nav_text, justify="left", wraplength=220, text_color=APP_MUTED, font=_font(15, bold=True))
+        self._nav_help_label.pack(anchor="w", padx=16, pady=(0, 12))
+
+        for key in self.menu_order:
+            title = self.page_meta[key]["title"]
+            button = ctk.CTkButton(nav, text=title, anchor="w", command=lambda page=key: self.select_page(page, announce=True), **self._button_style_kwargs())
+            button.pack(fill="x", padx=16, pady=4)
+            self.speech.bind_focus(button, title, self.page_meta[key]["hint"])
+            self._bind_tab_aliases(button)
+            self.nav_buttons[key] = button
+
+        self.detail_title = ctk.CTkLabel(details, text="", text_color=APP_TEXT, font=_font(26, bold=True))
+        self.detail_title.grid(row=0, column=0, sticky="w", padx=24, pady=(24, 8))
+
+        self.detail_body = ctk.CTkLabel(details, text="", wraplength=self._content_wraplength, justify="left", anchor="w", text_color=APP_MUTED, font=_font(16, bold=True))
+        self.detail_body.grid(row=1, column=0, sticky="w", padx=24, pady=(0, 16))
+
+        self.action_frame = ctk.CTkFrame(details)
+        self.action_frame.grid(row=2, column=0, sticky="nsew", padx=24, pady=(0, 24))
+        self.action_frame.grid_columnconfigure(0, weight=1)
+
+        self.select_page(self.current_page_key, announce=False)
+        self.after(150, self._sync_keyboard_focus)
+        self.speech.set_screen(
+            "Main menu",
+            "Use Up and Down arrows to choose a page. Press Right Arrow or Enter to activate. Press Left Arrow to go back. Press F6 to jump between panes.",
+        )
+        self._update_wraplengths()
+
+    def select_page(self, page_key: str, announce: bool = True) -> None:
+        if page_key not in self.page_meta:
+            return
+        self.current_page_key = page_key
+        for key, button in self.nav_buttons.items():
+            self._style_nav_button(key, button)
+        meta = self.page_meta[page_key]
+        self.detail_title.configure(text=meta["title"])
+        self.detail_body.configure(text=meta["description"])
+        self._render_actions(page_key)
+        self._sync_keyboard_focus()
+        if announce:
+            self.speech.set_focus(meta["title"], meta["hint"])

@@ -98,7 +98,7 @@ def _report_win(game_name: str) -> None:
                     break
                 _repo_root = _repo_root.parent
             sys.path.insert(0, str(_repo_root))
-            from launcher.scoreboard import Scoreboard
+            from launcher.services.leaderboard import Scoreboard
             sb = Scoreboard.from_workspace(_repo_root)
             sb.record_win(user_id, username, game_name)
         except Exception as exc:

@@ -14,7 +14,7 @@ venv/
 
 # Local auth config overrides
 config.py
-testing/config.py
+games/config.py
 
 # Packaging output
 build/

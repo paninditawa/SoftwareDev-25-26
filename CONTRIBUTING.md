@@ -52,5 +52,5 @@ Follow Microsoft accessibility guidance when you change UI code.
 
 - `supabase_project.py` contains the shared anon key — this is intentionally committed and safe to share.
 - Never add or commit any Supabase service role key.
-- `config.py` and `testing/config.py` are gitignored for local overrides.
+- `config.py` and `games/config.py` are gitignored for local overrides.
 
