@@ -896,6 +896,9 @@ class EscapeRoomGame:
                     if event.type == pygame.QUIT:
                         pygame.quit()
                         sys.exit()
+                    if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                        pygame.quit()
+                        sys.exit()
                 self.status_text = "Install SpeechRecognition + PyAudio"
                 self.draw()
                 self.clock.tick(15)
@@ -911,6 +914,10 @@ class EscapeRoomGame:
         while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     pygame.quit()
                     sys.exit()
 
