@@ -270,6 +270,7 @@ def main():
     turn = 1          # 1 = Player 1's turn, 2 = Player 2's turn
     selector_col = 3  # start the selector in the middle column
     game_over = False
+    tutorial_done = False  # blocks game input while the intro TTS is playing
 
     time.sleep(2) # brief pause before tutorial starts
 
@@ -288,7 +289,8 @@ def main():
     )
 
     draw_board(screen, board, selector_col)
-    announce_column(board, selector_col)
+    # announce_column is deferred until the tutorial TTS finishes (see tutorial_done check below).
+    pygame.time.wait(500)  # give gTTS time to start playing before we check get_busy()
 
     while True:
         for event in pygame.event.get():
@@ -302,12 +304,17 @@ def main():
                 sys.exit()
 
             if event.type == pygame.KEYDOWN:
+                if not tutorial_done:
+                    continue  # block all game input while the tutorial is still speaking
 
                 # Quit is allowed only after the game ends (Down arrow).
                 if event.key == pygame.K_DOWN:
-                    speak("Goodbye.")
-                    pygame.quit()
-                    sys.exit()
+                    if game_over:
+                        speak("Goodbye.")
+                        pygame.quit()
+                        sys.exit()
+                    speak("Down arrow exits after a game ends. Press escape to quit now.")
+                    continue
 
                 # Up arrow restarts the game at any time.
                 if event.key == pygame.K_UP:
@@ -320,19 +327,18 @@ def main():
                     announce_column(board, selector_col)
 
                 if not game_over:
-
                     if event.key == pygame.K_LEFT:
                         # Move the selector one column to the left (wraps around).
                         selector_col = (selector_col - 1) % COLS
                         draw_board(screen, board, selector_col)
                         announce_column(board, selector_col)
-                        
+
                     elif event.key == pygame.K_RIGHT:
                         # Move the selector one column to the right (wraps around).
                         selector_col = (selector_col + 1) % COLS
                         draw_board(screen, board, selector_col)
                         announce_column(board, selector_col)
-                        
+
                     elif event.key == pygame.K_SPACE:
                         # Drop the current player's piece into the selected column.
                         if drop_piece(board, selector_col, turn):
@@ -341,15 +347,24 @@ def main():
                             speak(f"Player {turn} dropped a piece in column {selector_col+1}.")
 
                             if winning_move(board, turn):
-                                speak_block(f"Player {turn} wins in column {selector_col+1}.")
+                                # Announce winner first, then post-game instructions in one call
+                                # so they can never overlap or play out of order.
+                                speak_block(
+                                    f"Player {turn} wins in column {selector_col+1}! "
+                                    "Press the up arrow key to restart, or the down arrow key to exit."
+                                )
                                 game_over = True
                                 _report_win("connect4")  # record the win on the leaderboard
-                                speak_block("Press the up arrow key to restart game. Press the down arrow key to exit the game.")
                             else:
                                 turn = 2 if turn == 1 else 1  # swap turns
 
                         else:
                             speak("Column full. Choose another column.")
+
+        # Unlock game play once the tutorial TTS finishes.
+        if not tutorial_done and not pygame.mixer.get_busy():
+            tutorial_done = True
+            announce_column(board, selector_col)  # ready-to-play announcement
 
         pygame.time.wait(20)
 

@@ -128,11 +128,12 @@ def _extract_letter(text: str) -> str | None:
     text = text.upper().strip()
 
     spoken_names = {
-        "AY": "A", "BEE": "B", "SEE": "C", "CEE": "C", "DEE": "D",
+        "AY": "A", "BEE": "B", "BE": "B", "SEE": "C", "CEE": "C", "SEA": "C", "DEE": "D",
         "EE": "E", "EF": "F", "GEE": "G", "AITCH": "H", "EYE": "I",
         "JAY": "J", "KAY": "K", "EL": "L", "EM": "M", "EN": "N",
-        "OH": "O", "PEE": "P", "CUE": "Q", "QUE": "Q", "AR": "R",
-        "ESS": "S", "TEE": "T", "YOU": "U", "VEE": "V", "WEE": "W",
+        "OH": "O", "PEE": "P", "CUE": "Q", "QUE": "Q", "QUEUE": "Q", "AR": "R", "ARE": "R",
+        "ESS": "S", "TEE": "T", "TEA": "T", "YOU": "U", "VEE": "V",
+        "WEE": "W", "DOUBLE YOU": "W", "DOUBLE-YOU": "W",
         "EKS": "X", "EX": "X", "WHY": "Y", "ZED": "Z", "ZEE": "Z",
     }
 
@@ -182,7 +183,15 @@ class VoiceListener:
             try:
                 self._mic = sr.Microphone()
                 with self._mic as source:
-                    self._recognizer.adjust_for_ambient_noise(source, duration=0.3)
+                    # Longer calibration window gives a more accurate noise floor.
+                    self._recognizer.adjust_for_ambient_noise(source, duration=1.0)
+                # Nudge threshold down so quiet speech is reliably detected,
+                # then pin it so dynamic adjustment can't drift it upward mid-session.
+                self._recognizer.energy_threshold = max(
+                    self._recognizer.energy_threshold * 0.8, 200
+                )
+                self._recognizer.dynamic_energy_threshold = False
+                self._recognizer.pause_threshold = 0.9
             except Exception:
                 self._mic = None
 
@@ -198,11 +207,21 @@ class VoiceListener:
         def _work() -> None:
             try:
                 with self._mic as source:
-                    audio = self._recognizer.listen(source, timeout=5, phrase_time_limit=8)
-                text = self._recognizer.recognize_google(audio)
-                self.result_queue.put(text.lower().strip())
+                    audio = self._recognizer.listen(source, timeout=5, phrase_time_limit=10)
             except Exception:
                 self.result_queue.put("")
+                return
+            # Retry recognition once in case of a transient API or network error.
+            for _attempt in range(2):
+                try:
+                    text = self._recognizer.recognize_google(audio, language="en-US")
+                    self.result_queue.put(text.lower().strip())
+                    return
+                except Exception:
+                    if _attempt == 0:
+                        continue
+                    break
+            self.result_queue.put("")
 
         threading.Thread(target=_work, daemon=True).start()
 
@@ -482,7 +501,7 @@ class HangmanGame:
             while spoken_line and self.small_font.size(spoken_line)[0] > WIDTH - 20:
                 spoken_line = spoken_line[:-1]
             last = self.small_font.render(spoken_line, True, MUTED_TEXT)
-            self.win.blit(last, (10, 164))
+            self.win.blit(last, (10, 105))
 
         hint = self.small_font.render("Left/Right move letters | Up/Down status | ENTER guesses | Hold SPACE to speak", True, MUTED_TEXT)
         hint_line = hint

@@ -208,6 +208,23 @@ class LoginMixin:
             self.speech.bind_focus(entry, f"{label_text} field", hint)
             self.login_entries[field_name] = entry
 
+            # Speak each character as it is typed (screen-reader-style feedback).
+            def _make_key_handler() -> object:
+                def _on_key(event) -> None:
+                    keysym = event.keysym
+                    if keysym == "BackSpace":
+                        self.speech.announce("backspace", interrupt=True, force=True)
+                    elif (
+                        event.char
+                        and event.char.isprintable()
+                        and not keysym.startswith(("Control", "Alt", "Shift", "caps_lock"))
+                    ):
+                        # Speak the actual character (password field included).
+                        self.speech.announce(event.char, interrupt=True, force=True)
+                return _on_key
+
+            entry.bind("<KeyRelease>", _make_key_handler(), add="+")
+
         # Sign In and Create Account sit side by side.
         button_row = ctk.CTkFrame(card, fg_color="transparent")
         button_row.pack(fill="x", padx=24, pady=(0, 12))

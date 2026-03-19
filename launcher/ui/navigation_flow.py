@@ -11,7 +11,7 @@ screen and the login screen.  Key concepts:
   show_menu() — builds the two-column (nav + details) layout and wires
               up every page button.
   select_page() — switches the active page, refreshes the action panel,
-              and announces the change to screen readers.
+              and announces the page title (announcement happens once per navigation).
 """
 from __future__ import annotations
 
@@ -149,7 +149,8 @@ class NavigationMixin:
         new_index = (current_index + delta) % len(self.menu_order)
         new_key = self.menu_order[new_index]
         self.nav_index = new_index
-        self.select_page(new_key, announce=True)
+        # Pass announce=False: _sync_keyboard_focus below makes the single announcement.
+        self.select_page(new_key, announce=False)
         self.nav_mode = True
         self._sync_keyboard_focus()
         return "break"
@@ -278,7 +279,7 @@ class NavigationMixin:
         welcome.pack(anchor="w", padx=16, pady=(16, 10))
 
         # Short navigation hint beneath the welcome label.
-        nav_text = "Use Up/Down arrows to change pages. Press F6 to jump between the page list and the details pane."
+        nav_text = "Use Up/Down arrows to change pages. Press Left/Right arrows to move between the page list and the details pane."
         self._nav_help_label = ctk.CTkLabel(nav, text=nav_text, justify="left", wraplength=220, text_color=APP_MUTED, font=_font(15, bold=True))
         self._nav_help_label.pack(anchor="w", padx=16, pady=(0, 12))
 
@@ -308,7 +309,7 @@ class NavigationMixin:
         self.after(150, self._sync_keyboard_focus)
         self.speech.set_screen(
             "Main menu",
-            "Use Up and Down arrows to choose a page. Press Right Arrow or Enter to activate. Press Left Arrow to go back. Press F6 to jump between panes.",
+            "Use Up and Down arrows to choose a page. Press Right Arrow or Enter to activate. Press Left Arrow to go back.",
         )
         self._update_wraplengths()
 

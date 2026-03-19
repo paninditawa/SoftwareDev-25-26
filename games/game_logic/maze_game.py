@@ -21,6 +21,7 @@ Up / Down — change maze size
 Space     — hear current size
 Enter     — start the game
 J         — hear full instructions
+Escape    — quit game
 
 Controls — in-game
 -------------------
@@ -28,11 +29,13 @@ Arrow keys — move
 Space      — scan directions (tones + speech)
 J          — return to size-select menu
 F          — reset the maze (same size)
+Escape     — quit game
 
 Controls — win screen
 ----------------------
 Enter  — new maze (same size)
 Space  — return to the size-select menu
+Escape — quit game
 """
 import pygame
 import threading
@@ -231,7 +234,8 @@ class SizeSelectScreen:
             "Welcome to Accessible Maze Game. "
             "Use UP and DOWN arrows to choose maze size. "
             f"Current size is {self.size} by {self.size}. "
-            "Press ENTER to start. Press J for full instructions."
+            "Press ENTER to start. Press J for full instructions. "
+            "Press ESCAPE at any time to quit."
         )
 
     def handle(self, event):
@@ -254,6 +258,7 @@ class SizeSelectScreen:
                 "Press SPACE to hear which directions are open or blocked. "
                 "Press J to return to this menu. "
                 "Press F to reset the maze with the same size. "
+                "Press ESCAPE at any time to quit the game. "
                 "Good luck!",
                 interrupt=True
             )
@@ -282,6 +287,7 @@ class SizeSelectScreen:
             "SPACE      — hear current size",
             "ENTER      — start game",
             "J          — hear full instructions",
+            "ESCAPE     — quit game",
             "",
             "In game:",
             "ARROWS     — move",
@@ -478,11 +484,7 @@ class MazeGame:
         self.screen.blit(you, (px + t//2 - you.get_width()//2, py + t//2 - you.get_height()//2))
 
         # HUD top
-        hud = self.small.render(
-            "ARROWS=move  SPACE=scan  Q=quit  R=reset  (win: ENTER=new  SPACE=menu)",
-            True, GRAY
-        )
-        hud_text = "ARROWS=move   SPACE=scan directions   (win: ENTER=new maze   SPACE=menu)"
+        hud_text = "ARROWS=move  SPACE=scan directions  J=menu  F=reset  ESC=quit  (win: ENTER=new maze  SPACE=menu)"
         while hud_text and self.small.size(hud_text)[0] > screen_w - 20:
             hud_text = hud_text[:-1]
         hud = self.small.render(hud_text, True, GRAY)

@@ -212,7 +212,15 @@ class VoiceListener:
             try:
                 self._mic = sr.Microphone()
                 with self._mic as source:
-                    self._recognizer.adjust_for_ambient_noise(source, duration=0.3)
+                    # Longer calibration window gives a more accurate noise floor.
+                    self._recognizer.adjust_for_ambient_noise(source, duration=1.0)
+                # Nudge threshold down so quiet speech is reliably detected,
+                # then pin it so dynamic adjustment can't drift it upward mid-session.
+                self._recognizer.energy_threshold = max(
+                    self._recognizer.energy_threshold * 0.8, 200
+                )
+                self._recognizer.dynamic_energy_threshold = False
+                self._recognizer.pause_threshold = 0.9
             except Exception:
                 self._mic = None
 
@@ -228,11 +236,21 @@ class VoiceListener:
         def _work() -> None:
             try:
                 with self._mic as source:
-                    audio = self._recognizer.listen(source, timeout=5, phrase_time_limit=8)
-                text = self._recognizer.recognize_google(audio)
-                self.result_queue.put(text.lower().strip())
+                    audio = self._recognizer.listen(source, timeout=5, phrase_time_limit=10)
             except Exception:
                 self.result_queue.put("")
+                return
+            # Retry recognition once in case of a transient API or network error.
+            for _attempt in range(2):
+                try:
+                    text = self._recognizer.recognize_google(audio, language="en-US")
+                    self.result_queue.put(text.lower().strip())
+                    return
+                except Exception:
+                    if _attempt == 0:
+                        continue
+                    break
+            self.result_queue.put("")
 
         threading.Thread(target=_work, daemon=True).start()
 
@@ -275,6 +293,10 @@ class VoiceMadLibsGame:
 
         self.status_text = "Hold SPACEBAR to speak"
         self.detail_text = "Say start to begin"
+        # Set to the pygame tick time after which we start watching for TTS silence
+        # to speak the post-story options prompt.
+        self._options_prompt_after: int = 0
+        self._pending_options_prompt: bool = False
 
     def _draw_wrapped_center(self, text: str, font, color, center_y: int, max_width: int) -> int:
         words = text.split()
@@ -389,7 +411,9 @@ class VoiceMadLibsGame:
             self.snd_win.play()
             speak("Your story is complete. Here it is.", interrupt=True)
             speak(self.final_story_text, interrupt=False)
-            speak("Say play again to replay this story, choose story for a different one, or quit.", interrupt=False)
+            # Schedule the options prompt for after TTS goes quiet (gate: 1.5 s minimum).
+            self._pending_options_prompt = True
+            self._options_prompt_after = pygame.time.get_ticks() + 1500
             return
 
         self._announce_current_prompt()
@@ -532,6 +556,9 @@ class VoiceMadLibsGame:
     def _handle_results(self, cmd: str) -> None:
         if any(w in cmd for w in ["read", "story", "again", "repeat"]):
             speak(self.final_story_text, interrupt=True)
+            # Re-schedule the options prompt for after the story finishes playing.
+            self._pending_options_prompt = True
+            self._options_prompt_after = pygame.time.get_ticks() + 1500
             return
 
         if "play again" in cmd or "restart" in cmd:
@@ -599,6 +626,20 @@ class VoiceMadLibsGame:
                     self.listening = False
                     self.process_command(result)
                     self.status_text = "Hold SPACEBAR to speak"
+
+            # Once the story TTS goes quiet, speak the post-story options.
+            if (
+                self._pending_options_prompt
+                and pygame.time.get_ticks() >= self._options_prompt_after
+                and not pygame.mixer.get_busy()
+            ):
+                self._pending_options_prompt = False
+                speak(
+                    "Say read story to hear it again, "
+                    "play again to replay with new words, "
+                    "choose story for a different one, or quit to exit.",
+                    interrupt=False,
+                )
 
             self.draw()
             self.clock.tick(30)

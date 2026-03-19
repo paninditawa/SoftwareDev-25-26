@@ -13,6 +13,7 @@ from __future__ import annotations
 
 # Standard-library imports
 import subprocess  # used to launch game processes
+import threading   # background thread that restores focus after a game exits
 from pathlib import Path  # cross-platform file and folder paths
 from tkinter import messagebox  # simple error/info pop-up dialogs
 
@@ -82,9 +83,59 @@ class ActionsMixin:
         self.action_buttons = []
 
     def _render_home_actions(self) -> None:
-        # Home page has no buttons — just a short navigation hint.
-        self._show_action_info(
-            "Choose a game or account option from the left menu. Use Up and Down arrows to navigate, Enter or Space to activate."
+        # Home page: two voice-guide buttons.
+        # UP arrow reaches "About HelloWorld"; DOWN arrow reaches "Key Controls Guide".
+        info = ctk.CTkLabel(
+            self.action_frame,
+            text="Press Up Arrow for a description of HelloWorld, or Down Arrow for the universal key controls guide.",
+            justify="left",
+            anchor="w",
+            wraplength=self._content_wraplength,
+            text_color=self.action_frame.cget("fg_color"),  # invisible; speech only
+        )
+        info.pack(fill="x", pady=(0, 4))
+        self._add_action_button(
+            "About HelloWorld GameSpace",
+            self._speak_about_helloworld,
+            "Press Enter to hear what HelloWorld GameSpace is and which games are available.",
+        )
+        self._add_action_button(
+            "Universal Key Controls Guide",
+            self._speak_key_guide,
+            "Press Enter to hear the key controls that work in every game.",
+        )
+
+    def _speak_about_helloworld(self) -> None:
+        # Speak a brief description of the app and its games.
+        self.speech.announce(
+            "HelloWorld GameSpace is an accessible space where both people with and without "
+            "vision impairments can play games together. "
+            "The app includes the following games: "
+            "Hangman, a word-guessing game you can play by speaking letters or using the keyboard. "
+            "Maze Game, a randomly generated maze that is fully playable by listening to spoken audio cues. "
+            "Voice Mad Libs, where you fill in story blanks by speaking your answers. "
+            "Escape Room, a fully voice-activated puzzle adventure. "
+            "Connect 4, a two-player strategy game with spoken move announcements. "
+            "Apples to Apples, a word-matching card game. "
+            "And Battleship, a classic grid-based naval strategy game. "
+            "Use Up and Down arrows to browse the game list on the left, "
+            "then press Right Arrow or Enter to launch a game.",
+            interrupt=True,
+            force=True,
+        )
+
+    def _speak_key_guide(self) -> None:
+        # Speak the universal keyboard controls that apply across the whole app.
+        self.speech.announce(
+            "Universal key controls. "
+            "Up and Down arrows navigate between pages or options. "
+            "Left and Right arrows move between the page list and the action panel. "
+            "Enter or Space activates the focused button or starts a game. "
+            "Tab and Shift-Tab also cycle through interactive elements. "
+            "Pressing Escape at any time quits the current game and returns you to the launcher. "
+            "In games with voice input, hold Spacebar to speak your command.",
+            interrupt=True,
+            force=True,
         )
 
     def _render_script_actions(self, page_key: str) -> None:
@@ -233,8 +284,15 @@ class ActionsMixin:
             env["HW_USER_ID"] = self.auth_session.local_id
             env["HW_USERNAME"] = self.auth_session.username or self.auth_session.email
         relative_target = script_path.relative_to(self.repo_root).as_posix()
-        subprocess.Popen(self._launcher_command("--run-target", relative_target), cwd=str(self.repo_root), env=env)
+        proc = subprocess.Popen(self._launcher_command("--run-target", relative_target), cwd=str(self.repo_root), env=env)
         self.speech.announce(f"Launching {title}.", interrupt=True, force=True)
+
+        # After the game exits, bring the launcher window back to the foreground.
+        def _restore_focus():
+            proc.wait()
+            self.after(0, lambda: (self.lift(), self.focus_force()))
+
+        threading.Thread(target=_restore_focus, daemon=True).start()
 
     def _parse_port(self) -> int | None:
         # Read the port field and return an integer, or announce an error and return None.

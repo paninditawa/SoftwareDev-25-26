@@ -4,7 +4,7 @@ Accessible collection of mini-games with a desktop-first launcher, account sign-
 
 New contributors can follow the short setup guide in `CONTRIBUTING.md`.
 
-Keyboard controls: Up/Down arrows (or Shift+Tab/Tab) to navigate, Left/Right arrows to switch between menus and actions, F6 to jump between panes, F1 for help, F2 to repeat the last message, F7 for current context, and Enter or Space to activate.
+Keyboard controls: Up/Down arrows (or Shift+Tab/Tab) to navigate, Left/Right arrows to switch between menus and actions, F1 for help, F2 to repeat the last message, F7 for current context, and Enter or Space to activate.
 
 ## Quick Start (Windows PowerShell)
 
