@@ -8,22 +8,36 @@ It integrates with Supabase for authentication and data storage.
 Finally, it includes features like keyboard navigation and text-to-speech accessibility support.
 """
 
+# annotations keeps type hints as strings (avoids forward-reference issues)
 from __future__ import annotations
 
+# subprocess launches game processes without blocking the launcher
 import subprocess
+# sys gives access to the Python runtime (e.g. the executable path)
 import sys
+# tkinter is the base GUI library; customtkinter wraps it with nicer widgets
 import tkinter as tk
+# Path provides safe, OS-independent file/folder path handling
 from pathlib import Path
+# messagebox shows native pop-up dialogs (errors, confirmations)
 from tkinter import messagebox
 
+# customtkinter provides modern-looking widgets on top of tkinter
 import customtkinter as ctk
 
+# SpeechManager handles all text-to-speech announcements
 from launcher.services.speech import SpeechManager
+# apples_service manages the Apples to Apples SQLite database
 from launcher.services import apples_service
+# AuthSession holds logged-in user data; AuthClient talks to Supabase
 from launcher.services.auth_client import AuthSession, AuthClient
+# ActionsMixin provides all game-panel UI methods
 from launcher.ui.action_pages import ActionsMixin
+# LoginMixin provides the login / sign-up screen
 from launcher.ui.login_flow import LoginMixin
+# NavigationMixin provides keyboard navigation handlers
 from launcher.ui.navigation_flow import NavigationMixin
+# Scoreboard reads and writes win counts on Supabase
 from launcher.services.leaderboard import Scoreboard
 from launcher.ui.theme import (
     APP_ACCENT,
@@ -45,13 +59,16 @@ from launcher.ui.theme import (
     _font,
 )
 
+# project root is three levels up from this file (launcher/ui/application.py)
 REPO_ROOT = Path(__file__).resolve().parents[2]
+# paths to the top-level games folder and its subfolders
 GAMES_DIR = REPO_ROOT / "games"
 GAME_LOGIC_DIR = GAMES_DIR / "game_logic"
 BATTLESHIP_DIR = GAMES_DIR / "Battleship"
 
 
 def _script_page(title: str, description: str, path: Path) -> dict[str, object]:
+    # builds a PAGE_META entry for pages that launch an external .py script
     return {
         "title": title,
         "description": description,
@@ -62,6 +79,7 @@ def _script_page(title: str, description: str, path: Path) -> dict[str, object]:
 
 
 def _simple_page(title: str, description: str, action_hint: str, page_type: str) -> dict[str, str]:
+    # builds a PAGE_META entry for pages that are handled entirely inside the launcher
     return {
         "title": title,
         "description": description,
@@ -69,6 +87,7 @@ def _simple_page(title: str, description: str, action_hint: str, page_type: str)
         "type": page_type,
     }
 
+# PAGE_META stores display text and routing info for every page in the left nav
 PAGE_META = {
     "home": {
         "title": "Home",
@@ -102,11 +121,13 @@ PAGE_META = {
     "account": _simple_page("Account", "Sign out of your account.", "manage your account", "account"),
 }
 
+# MENU_ORDER controls the order pages appear in the left-hand navigation list
 MENU_ORDER = [
     "home", "hangman", "maze", "madlibs", "escape",
     "connect4", "apples", "battleship", "scoreboard", "account",
 ]
 
+# SCOREBOARD_GAMES lists (page_key, display_label) pairs shown on the scoreboard page
 SCOREBOARD_GAMES = [
     ("battleship", "Battleship"),
     ("hangman",    "Hangman"),
@@ -116,9 +137,11 @@ SCOREBOARD_GAMES = [
     ("apples",     "Apples to Apples"),
 ]
 
+# GameSpaceApp is the main application window — it mixes in navigation, login, and action logic
 class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
+        # use the light theme and a dark-blue accent colour
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("dark-blue")
 
@@ -126,34 +149,49 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         self._set_initial_window_size()
         self.configure(fg_color=APP_BG)
 
+        # AuthClient reads Supabase credentials so users can sign in
         self.auth_client = AuthClient.from_workspace(REPO_ROOT)
 
         if not self.auth_client.is_configured():
             raise RuntimeError("Supabase auth is required. Configure supabase_project.py before launching.")
         
+        # SpeechManager handles all spoken announcements for blind users
         self.speech = SpeechManager(on_announce=self._set_status)
+        # auth_session holds user data once someone signs in (None = logged out)
         self.auth_session: AuthSession | None = None
+        # server_process tracks the Battleship server subprocess (None when not running)
         self.server_process: subprocess.Popen | None = None
+        # current_screen tracks which top-level view is visible ("login", "menu", etc.)
         self.current_screen = "startup"
+        # current_page_key is the selected left-nav item key
         self.current_page_key = "home"
         self.page_meta = PAGE_META
         self.repo_root = REPO_ROOT
         self.battleship_dir = BATTLESHIP_DIR
         self.scoreboard_games = SCOREBOARD_GAMES
         self.menu_order = list(MENU_ORDER)
+        # nav_index is the position of the selected page in the left nav list
         self.nav_index = self.menu_order.index("home")
+        # action_index is the position of the selected button in the right action panel
         self.action_index = 0
+        # nav_mode = True means keyboard focus is in the left nav; False = right panel
         self.nav_mode = True
+        # nav_buttons maps page keys to their left-nav CTkButton widgets
         self.nav_buttons: dict[str, ctk.CTkButton] = {}
+        # action_widgets includes all interactive widgets in the right panel
         self.action_widgets: list[tk.Widget] = []
+        # action_buttons is the subset of action_widgets that can be activated with Enter
         self.action_buttons: list[ctk.CTkButton] = []
+        # login_* variables track focus state on the login screen
         self.login_action_buttons: list[ctk.CTkButton] = []
         self.login_entries: dict[str, ctk.CTkEntry] = {}
         self.login_action_index = 0
         self.login_focus_order: list[tk.Widget] = []
         self.login_focus_index: int = 0
+        # max pixel width for text labels in the right-side content panel
         self._content_wraplength = 620
 
+        # StringVars are tkinter's observable string values; bound to entry fields
         self.status_var = tk.StringVar(value="Ready.")
         self.username_var = tk.StringVar()
         self.email_var = tk.StringVar()
@@ -163,11 +201,15 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         self.battleship_room_code_var = tk.StringVar()
         self.apples_code_var = tk.StringVar()
         self.apples_name_var = tk.StringVar()
+        # apples_token is the player auth token returned by the Apples game server
         self.apples_token = ""
+        # these track what card the user has selected in the Apples game UI
         self.apples_selected_card: str | None = None
         self.apples_judge_choice: str | None = None
 
+        # cached Scoreboard client (created on first use)
         self._scoreboard: "Scoreboard | None" = None
+        # which game's scores to show when the scoreboard tab is open
         self._sb_selected_game: str = "battleship"
 
         self.header = ctk.CTkLabel(
@@ -200,16 +242,22 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         )
         self.status_label.pack(fill="x", padx=24, pady=(0, 16))
 
+        # re-calculate text wrap widths whenever the window is resized
         self.bind("<Configure>", self._on_window_resize, add="+")
 
+        # attach all keyboard shortcuts (arrows, enter, space, escape, f, j)
         self._bind_global_keys()
+        # intercept the window's X button so cleanup code runs before closing
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
+        # create the Apples to Apples SQLite tables if they don't exist yet
         apples_service.init()
 
+        # show the login screen as the first thing the user sees
         self.show_login()
 
     def _set_initial_window_size(self) -> None:
+        # start with tkinter's reported screen dimensions as a fallback
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
         origin_x = 0
@@ -222,6 +270,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
 
                 rect = wintypes.RECT()
                 SPI_GETWORKAREA = 0x0030
+                # SPI_GETWORKAREA returns the usable desktop area (excludes taskbar)
                 if ctypes.windll.user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(rect), 0):
                     origin_x = rect.left
                     origin_y = rect.top
@@ -230,10 +279,12 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             except Exception:
                 pass
 
+        # calculate a window size that fills most of the screen, with minimum limits
         width = max(720, min(screen_width - 40, int(screen_width * 0.96)))
         height = max(560, min(screen_height - 60, int(screen_height * 0.94)))
         min_width = min(960, width)
         min_height = min(640, height)
+        # centre the window on the usable desktop area
         x = origin_x + max(0, (screen_width - width) // 2)
         y = origin_y + max(0, (screen_height - height) // 2)
 
@@ -241,6 +292,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         self.minsize(min_width, min_height)
 
     def _get_scoreboard(self) -> "Scoreboard | None":
+        # create and cache a Scoreboard client on first call; return None if unavailable
         if self._scoreboard is None:
             try:
                 token = self.auth_session.id_token if self.auth_session else ""
@@ -266,12 +318,15 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             print(f"[scoreboard] record_win failed: {exc}")
 
     def _launcher_command(self, *extra_args: str) -> list[str]:
+        # returns a shell command that re-invokes the launcher with extra arguments
         return [sys.executable, str(REPO_ROOT / "launch_gamespace.py"), *extra_args]
 
     def _set_status(self, text: str) -> None:
+        # writes the latest TTS message into the status bar at the bottom of the window
         self.status_var.set(f"Last message: {text}")
 
     def _on_window_resize(self, _event=None) -> None:
+        # called whenever the window is resized; update text wrap widths to match
         self._update_wraplengths()
 
     def _update_wraplengths(self) -> None:
@@ -323,11 +378,8 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         self.bind_all("<KP_Enter>", self._handle_activate, add="+")
         self.bind_all("<space>", self._handle_activate, add="+")
         self.bind_all("<Escape>", self._handle_escape, add="+")
-        self.bind_all("<F1>", self._handle_help, add="+")
-        self.bind_all("<F2>", self._handle_repeat, add="+")
-        self.bind_all("<F6>", lambda event: self._handle_pane_cycle(1), add="+")
-        self.bind_all("<Shift-F6>", lambda event: self._handle_pane_cycle(-1), add="+")
-        self.bind_all("<F7>", self._handle_where_am_i, add="+")
+        self.bind_all("<f>", self._handle_help, add="+")
+        self.bind_all("<j>", self._handle_repeat, add="+")
 
     def _bind_tab_aliases(self, widget: tk.Widget) -> None:
         widget.bind("<Shift-Tab>", lambda event: self._handle_vertical(-1), add="+")
@@ -336,12 +388,16 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
     def _handle_help(self, _event=None):
         if self.current_screen == "login":
             self.speech.announce(
-                "Login screen help. Use Up and Down arrows to move between buttons. Press Enter or Space to activate. Username is required when creating a new account.",
+                "Login screen help. Use Up and Down arrows to move between buttons. Press Enter or Space to activate. "
+                "Username is required when creating a new account. "
+                "Press F to hear help again. Press J to repeat the last announcement.",
                 interrupt=True, force=True,
             )
         elif self.current_screen == "menu":
             self.speech.announce(
-                "Menu help. Use Up and Down arrows to move between pages. Press Right Arrow or Enter to move into action buttons. Press Left Arrow to return to the page list.",
+                "Menu help. Use Up and Down arrows to move between pages. Press Right Arrow or Enter to move into action buttons. "
+                "Press Left Arrow to return to the page list. "
+                "Press F to hear help again. Press J to repeat the last announcement.",
                 interrupt=True, force=True,
             )
         else:

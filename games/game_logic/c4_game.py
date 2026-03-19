@@ -1,3 +1,19 @@
+"""
+Accessible Connect Four game for the HelloWorld GameSpace.
+
+This is a two-player turn-based game on a 7-column, 6-row grid.
+Players use Left/Right arrows to move a column selector and Spacebar
+to drop their piece.  Every action is announced via text-to-speech so
+the game is fully playable without looking at the screen.
+
+Controls
+--------
+Left / Right — move the column selector
+Space        — drop your piece into the selected column
+Up Arrow     — restart the game
+Down Arrow   — quit after the game is over
+Escape       — quit at any time
+"""
 import pygame
 import numpy as np
 import sys
@@ -22,21 +38,22 @@ except ImportError:
 # -----------------------------
 # CONFIG
 # -----------------------------
-ROWS = 6
-COLS = 7
-SQUARESIZE = 100
-RADIUS = int(SQUARESIZE/2 - 5)
+ROWS = 6   # number of rows in the grid
+COLS = 7   # number of columns in the grid
+SQUARESIZE = 100                   # pixel size of each cell before scaling
+RADIUS = int(SQUARESIZE/2 - 5)     # radius of each piece circle
 WIDTH = COLS * SQUARESIZE
-HEIGHT = (ROWS + 1) * SQUARESIZE
+HEIGHT = (ROWS + 1) * SQUARESIZE  # extra row at the top for the selector arrow
 SIZE = (WIDTH, HEIGHT)
 
+# Board and UI colors
 BLUE = (27, 76, 127)
 BLACK = (0, 0, 0)
-RED = (198, 88, 0)
-YELLOW = (0, 113, 128)
+RED = (198, 88, 0)    # Player 1 piece color
+YELLOW = (0, 113, 128)  # Player 2 piece color
 WHITE = (255, 255, 255)
-BOARD_HOLE = (241, 245, 249)
-PIECE_TEXT = (255, 255, 255)
+BOARD_HOLE = (241, 245, 249)  # background color inside each cell circle
+PIECE_TEXT = (255, 255, 255)  # number label drawn on top of each piece
 
 
 def _recommended_window_size(base_w: int, base_h: int) -> tuple[int, int]:
@@ -109,9 +126,12 @@ def _report_win(game_name: str) -> None:
 # GAME LOGIC
 # -----------------------------
 def create_board():
+    # Return a 6x7 numpy array filled with zeros (0 = empty, 1 = P1, 2 = P2).
     return np.zeros((ROWS, COLS), dtype=int)
 
 def drop_piece(board, col, piece):
+    # Find the lowest empty row in `col` and place `piece` there.
+    # Returns True if successful, False if the column is full.
     for r in range(ROWS-1, -1, -1):
         if board[r][col] == 0:
             board[r][col] = piece
@@ -119,6 +139,7 @@ def drop_piece(board, col, piece):
     return False
 
 def winning_move(board, piece):
+    # Check all four directions for a line of four matching pieces.
     # Horizontal
     for r in range(ROWS):
         for c in range(COLS-3):
@@ -142,6 +163,8 @@ def winning_move(board, piece):
     return False
 
 def describe_column(board, col):
+    # Build a text description of what is in a column, from bottom to top.
+    # Used by the screen-reader announcement when the selector moves.
     pieces = []
     empty_count = 0
 
@@ -163,6 +186,7 @@ def describe_column(board, col):
     return ", ".join(pieces) if pieces else "6 empty"
 
 def announce_column(board, col):
+    # Speak the current selector column number and its contents.
     msg = f"Column {col+1} selected. Contents from bottom to top: {describe_column(board, col)}."
     speak(msg)
 
@@ -170,10 +194,11 @@ def announce_column(board, col):
 # DRAWING
 # -----------------------------
 def draw_board(screen, board, selector_col):
+    # Redraw the entire board: background, selector arrow, grid, and pieces.
     screen.fill(WHITE)
     piece_font = pygame.font.SysFont("segoeui", 40)
 
-    # Selector arrow
+    # Triangle arrow above the selected column
     x = selector_col * SQUARESIZE + SQUARESIZE//2
     pygame.draw.polygon(screen, BLACK, [
         (x, 60),
@@ -227,6 +252,7 @@ def draw_board(screen, board, selector_col):
 # -----------------------------
 def main():
     pygame.init()
+    # Scale the window to fit the display while keeping aspect ratio.
     global SQUARESIZE, RADIUS, WIDTH, HEIGHT, SIZE
     target_w, target_h = _recommended_window_size(WIDTH, HEIGHT)
     square_w = max(80, target_w // COLS)
@@ -241,8 +267,8 @@ def main():
     pygame.display.set_caption("Accessible Connect 4")
 
     board = create_board()
-    turn = 1
-    selector_col = 3
+    turn = 1          # 1 = Player 1's turn, 2 = Player 2's turn
+    selector_col = 3  # start the selector in the middle column
     game_over = False
 
     time.sleep(2) # brief pause before tutorial starts
@@ -277,13 +303,13 @@ def main():
 
             if event.type == pygame.KEYDOWN:
 
-                # Quit after win
+                # Quit is allowed only after the game ends (Down arrow).
                 if event.key == pygame.K_DOWN:
                     speak("Goodbye.")
                     pygame.quit()
                     sys.exit()
 
-                # Restart
+                # Up arrow restarts the game at any time.
                 if event.key == pygame.K_UP:
                     board = create_board()
                     turn = 1
@@ -296,16 +322,19 @@ def main():
                 if not game_over:
 
                     if event.key == pygame.K_LEFT:
+                        # Move the selector one column to the left (wraps around).
                         selector_col = (selector_col - 1) % COLS
                         draw_board(screen, board, selector_col)
                         announce_column(board, selector_col)
                         
                     elif event.key == pygame.K_RIGHT:
+                        # Move the selector one column to the right (wraps around).
                         selector_col = (selector_col + 1) % COLS
                         draw_board(screen, board, selector_col)
                         announce_column(board, selector_col)
                         
                     elif event.key == pygame.K_SPACE:
+                        # Drop the current player's piece into the selected column.
                         if drop_piece(board, selector_col, turn):
 
                             draw_board(screen, board, selector_col)
@@ -314,10 +343,10 @@ def main():
                             if winning_move(board, turn):
                                 speak_block(f"Player {turn} wins in column {selector_col+1}.")
                                 game_over = True
-                                _report_win("connect4")
+                                _report_win("connect4")  # record the win on the leaderboard
                                 speak_block("Press the up arrow key to restart game. Press the down arrow key to exit the game.")
                             else:
-                                turn = 2 if turn == 1 else 1
+                                turn = 2 if turn == 1 else 1  # swap turns
 
                         else:
                             speak("Column full. Choose another column.")

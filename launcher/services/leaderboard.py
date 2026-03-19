@@ -3,7 +3,7 @@ launcher/scoreboard.py
 ----------------------
 Community scoreboard backed by Supabase.
 
-Schema (run once in your Supabase SQL editor):
+Schema (run once in Supabase SQL editor):
 
     create table if not exists scores (
         id          bigserial primary key,

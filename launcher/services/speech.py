@@ -1,4 +1,5 @@
-"""Speech and focus announcements for the launcher UI.
+"""
+Speech and focus announcements for the launcher UI.
 
 This module uses the project's required `tts` helper for spoken output and
 tracks screen/focus context so announcements are useful to keyboard users.

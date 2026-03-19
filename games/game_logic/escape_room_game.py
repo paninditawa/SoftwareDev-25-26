@@ -1,5 +1,5 @@
-"""Accessible Escape Room — fully voice-activated for blind players.
-
+"""
+Accessible Escape Room — fully voice-activated for blind players.
 Hold SPACEBAR to speak a command. Release to submit.
 """
 

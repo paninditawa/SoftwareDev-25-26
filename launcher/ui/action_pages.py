@@ -1,12 +1,27 @@
+"""
+ActionsMixin for the HelloWorld GameSpace launcher.
+
+This mixin holds every method that builds the right-hand panel (the
+'action area') for each page.  Each page type has its own _render_*
+method that is called by _render_actions() when the user switches pages.
+
+Mixins do not stand alone — GameSpaceApp inherits from this class along
+with NavigationMixin and LoginMixin so that it gets all three sets of
+methods in one place.
+"""
 from __future__ import annotations
 
-import subprocess
-from pathlib import Path
-from tkinter import messagebox
+# Standard-library imports
+import subprocess  # used to launch game processes
+from pathlib import Path  # cross-platform file and folder paths
+from tkinter import messagebox  # simple error/info pop-up dialogs
 
+# Third-party UI toolkit
 import customtkinter as ctk
 
+# Game-data service for Apples to Apples (SQLite-backed)
 from launcher.services import apples_service
+# Color constants and font helper from the central theme file
 from launcher.ui.theme import (
     APP_BG,
     APP_BORDER,
@@ -20,12 +35,15 @@ from launcher.ui.theme import (
 )
 
 
+# All action-area helpers live inside this mixin class.
 class ActionsMixin:
     def _announce_error(self, title: str, message: str) -> None:
+        # Speak the error aloud and show a pop-up dialog.
         self.speech.announce(message, interrupt=True, force=True)
         messagebox.showerror(title, message)
 
     def _clear_actions(self) -> None:
+        # Remove every widget from the right-hand action panel and reset tracking lists.
         for child in self.action_frame.winfo_children():
             child.destroy()
         self.action_widgets = []
@@ -33,6 +51,7 @@ class ActionsMixin:
         self.action_index = 0
 
     def _add_action_button(self, text: str, command, hint: str) -> ctk.CTkButton:
+        # Create a full-width button, attach its speech hint, and add it to the action list.
         button = ctk.CTkButton(self.action_frame, text=text, command=command, **self._button_style_kwargs())
         button.pack(fill="x", pady=6)
         self.speech.bind_focus(button, text, hint)
@@ -42,6 +61,7 @@ class ActionsMixin:
         return button
 
     def _register_action_button(self, button: ctk.CTkButton, hint: str) -> None:
+        # Register an existing button (already placed on screen) in the navigation lists.
         text = button.cget("text")
         self.speech.bind_focus(button, text, hint)
         self._bind_tab_aliases(button)
@@ -49,6 +69,7 @@ class ActionsMixin:
         self.action_buttons.append(button)
 
     def _show_action_info(self, text: str) -> None:
+        # Place a read-only text label in the action area (no button to focus on).
         info = ctk.CTkLabel(
             self.action_frame,
             text=text,
@@ -61,11 +82,13 @@ class ActionsMixin:
         self.action_buttons = []
 
     def _render_home_actions(self) -> None:
+        # Home page has no buttons — just a short navigation hint.
         self._show_action_info(
             "Choose a game or account option from the left menu. Use Up and Down arrows to navigate, Enter or Space to activate."
         )
 
     def _render_script_actions(self, page_key: str) -> None:
+        # Pages whose type is 'script' get a single Launch button.
         meta = self.page_meta[page_key]
         self._add_action_button(
             f"Launch {meta['title']}",
@@ -74,11 +97,14 @@ class ActionsMixin:
         )
 
     def _render_account_actions(self) -> None:
+        # Account page has a single Sign Out button.
         self._add_action_button("Sign Out", self._sign_out, "Press Enter to sign out and return to the login screen.")
 
     def _render_actions(self, page_key: str) -> None:
+        # Called every time the user switches pages; wipes the old panel and draws the new one.
         self._clear_actions()
         kind = self.page_meta[page_key]["type"]
+        # Map each page type string to the method that builds its panel.
         renderers = {
             "home": self._render_home_actions,
             "script": lambda: self._render_script_actions(page_key),
@@ -92,6 +118,7 @@ class ActionsMixin:
             renderer()
 
     def _render_battleship_actions(self) -> None:
+        # Room-code entry — the host shares this six-character code with their opponent.
         code_label = ctk.CTkLabel(
             self.action_frame,
             text="Room code - share this with your opponent when hosting, or enter theirs to join:",
@@ -103,6 +130,7 @@ class ActionsMixin:
         self.speech.bind_focus(code_entry, "Room code field", "Enter or read out the room code.")
         self.action_widgets.append(code_entry)
 
+        # Action buttons: host starts server + opens client; join opens client only.
         self._add_action_button(
             "Host Game",
             self._battleship_host,
@@ -119,6 +147,7 @@ class ActionsMixin:
             "Stops the running game server.",
         )
 
+        # Small informational label showing the host and port the server will use.
         port_note = ctk.CTkLabel(
             self.action_frame,
             text=f"Advanced: server runs on {self.client_host_var.get()}:{self.client_port_var.get()}",
@@ -129,7 +158,7 @@ class ActionsMixin:
         self.action_widgets.append(port_note)
 
     def _battleship_host(self) -> None:
-        """Start the server and immediately launch a client as the host player."""
+        # Start the Battleship server in a background process and open the client for the host player.
         if self.server_process and self.server_process.poll() is None:
             self.speech.announce("A game is already running. Stop it first.", interrupt=True, force=True)
             return
@@ -142,6 +171,7 @@ class ActionsMixin:
         import hashlib
         import time as _t
 
+        # Generate a short, unique room code from the host, port, and current time.
         raw = f"{host}:{port}:{_t.time()}"
         room_code = hashlib.md5(raw.encode()).hexdigest()[:6].upper()
         self.battleship_room_code_var.set(room_code)
@@ -160,7 +190,7 @@ class ActionsMixin:
         )
 
     def _battleship_join(self) -> None:
-        """Join a hosted game using the room code (which maps to host:port)."""
+        # Connect to an already-running server using the current host and port settings.
         port = self._parse_port()
         if port is None:
             return
@@ -168,9 +198,11 @@ class ActionsMixin:
         self._launch_battleship_client(host, port, is_host=False)
 
     def _launch_battleship_client(self, host: str, port: int, is_host: bool = False, room_code: str = "") -> None:
+        # Spawn the Battleship client process, passing the logged-in user's identity as arguments.
         client_path = self.battleship_dir / "client.py"
         relative_target = client_path.relative_to(self.repo_root).as_posix()
 
+        # Retrieve user credentials from the current auth session (or fall back to Guest).
         user_id = self.auth_session.local_id if self.auth_session else ""
         username = (self.auth_session.username or self.auth_session.email) if self.auth_session else "Guest"
 
@@ -188,12 +220,14 @@ class ActionsMixin:
         self.speech.announce(f"{action} Battleship game.", interrupt=True, force=True)
 
     def _launch_script(self, script_path: Path, title: str) -> None:
+        # Open any game or tool script as a separate process.
         if not script_path.exists():
             message = f"Could not find {script_path.name}."
             self._announce_error("Missing file", message)
             return
         import os
 
+        # Pass the logged-in user's identity via environment variables so games can save scores.
         env = os.environ.copy()
         if self.auth_session:
             env["HW_USER_ID"] = self.auth_session.local_id
@@ -203,6 +237,7 @@ class ActionsMixin:
         self.speech.announce(f"Launching {title}.", interrupt=True, force=True)
 
     def _parse_port(self) -> int | None:
+        # Read the port field and return an integer, or announce an error and return None.
         value = self.client_port_var.get().strip()
         try:
             return int(value)
@@ -211,6 +246,7 @@ class ActionsMixin:
             return None
 
     def _stop_battleship_server(self) -> None:
+        # Terminate the background server process if one is running.
         if not self.server_process or self.server_process.poll() is not None:
             self.speech.announce("No game is currently running.", interrupt=True, force=True)
             return
@@ -219,8 +255,10 @@ class ActionsMixin:
         self.speech.announce("Game stopped.", interrupt=True, force=True)
 
     def _render_scoreboard_actions(self) -> None:
+        # Scoreboard panel: first check if Supabase is available, then build game-picker buttons.
         sb = self._get_scoreboard()
         if sb is None:
+            # Supabase not configured — show a plain message and return early.
             info = ctk.CTkLabel(
                 self.action_frame,
                 text="Scoreboard unavailable - Supabase is not configured.",
@@ -230,6 +268,7 @@ class ActionsMixin:
             self.action_buttons = []
             return
 
+        # Row of buttons, one per game, that reload the leaderboard table below.
         selector_frame = ctk.CTkFrame(self.action_frame, fg_color="transparent")
         selector_frame.pack(fill="x", pady=(0, 12))
 
@@ -244,6 +283,7 @@ class ActionsMixin:
             btn.pack(side="left", padx=4)
             self._register_action_button(btn, f"Show scoreboard for {game_label}.")
 
+        # Scrollable area where the ranked player rows are drawn.
         self.sb_display_frame = ctk.CTkScrollableFrame(self.action_frame, fg_color=APP_BG, corner_radius=8)
         self.sb_display_frame.pack(fill="both", expand=True)
 
@@ -256,9 +296,11 @@ class ActionsMixin:
         self.after(100, lambda: self._load_scoreboard(self._sb_selected_game))
 
     def _load_scoreboard(self, game_key: str) -> None:
+        # Fetch the top-10 list for one game and redraw the scoreboard display frame.
         self._sb_selected_game = game_key
         sb = self._get_scoreboard()
 
+        # Guard: the scrollable frame may have been destroyed if the page was switched.
         if not hasattr(self, "sb_display_frame") or not self.sb_display_frame.winfo_exists():
             return
         for child in self.sb_display_frame.winfo_children():
@@ -298,6 +340,7 @@ class ActionsMixin:
                 row=0, column=col, padx=8, pady=6, sticky="w"
             )
 
+        # Map rank numbers to medal strings (1st, 2nd, 3rd) used in the rank column.
         medals = {1: "1", 2: "2", 3: "3"}
         announce_lines = [f"{game_label} leaderboard."]
         for rank, row in enumerate(rows, start=1):
@@ -319,6 +362,7 @@ class ActionsMixin:
         self.speech.announce(" ".join(announce_lines), interrupt=True, force=True)
 
     def _render_apples_actions(self) -> None:
+        # Build the full Apples to Apples panel; the content changes based on the current game phase.
         helper = ctk.CTkLabel(
             self.action_frame,
             text="Create a local game code or join an existing one. After joining, refresh to hear the latest state.",
@@ -357,6 +401,7 @@ class ActionsMixin:
         refresh_button.grid(row=0, column=2, padx=(6, 0), sticky="ew")
         self._register_action_button(refresh_button, "Activate to reload Apples to Apples game state.")
 
+        # If there is no active game (no code entered or code does not exist), show a prompt.
         game = self._current_apples_game()
         if not game:
             info = ctk.CTkLabel(
@@ -448,6 +493,7 @@ class ActionsMixin:
             ctk.CTkLabel(self.action_frame, text="Game over. Review the scores above or create a new game.", justify="left", anchor="w", wraplength=self._content_wraplength).pack(fill="x", pady=(12, 0))
 
     def _current_apples_game(self):
+        # Look up the game record by the code currently in the entry field.
         code = self.apples_code_var.get().strip().upper()
         if not code:
             return None

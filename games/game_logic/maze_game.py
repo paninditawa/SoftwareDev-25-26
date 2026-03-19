@@ -1,3 +1,39 @@
+"""
+Accessible Maze Game for the HelloWorld GameSpace.
+
+A randomly generated maze where every action is announced via
+text-to-speech so blind or low-vision players can play without
+looking at the screen.
+
+How it works
+------------
+1. A size-selection screen lets the player choose a grid from 5×5
+   to 25×25 using Up/Down arrows.
+2. The maze is generated with a recursive depth-first search
+   (backtracker algorithm) so every cell is reachable.
+3. The player moves with arrow keys.  Pressing Space plays a short
+   tone per direction (high = open, low = blocked) and then speaks
+   the list of open directions plus distance to the exit.
+
+Controls — size-select screen
+------------------------------
+Up / Down — change maze size
+Space     — hear current size
+Enter     — start the game
+J         — hear full instructions
+
+Controls — in-game
+-------------------
+Arrow keys — move
+Space      — scan directions (tones + speech)
+J          — return to size-select menu
+F          — reset the maze (same size)
+
+Controls — win screen
+----------------------
+Enter  — new maze (same size)
+Space  — return to the size-select menu
+"""
 import pygame
 import threading
 import queue
@@ -23,7 +59,7 @@ except ImportError:
         print(text)
 
 # --- Audio constants ---
-SAMPLE_RATE = 44100
+SAMPLE_RATE = 44100  # samples per second used for tone synthesis
 
 # --- Colors ---
 WHITE  = (255, 255, 255)
@@ -68,6 +104,7 @@ def _recommended_window_size(base_w: int, base_h: int) -> tuple[int, int]:
 # Speech engine — cross-platform wrapper around the `tts` helper.
 # ---------------------------------------------------------------------------
 class SpeechEngine:
+    # Runs TTS in a background thread so speech never blocks the game loop.
     def __init__(self):
         self._q = queue.Queue()
         self._thread = threading.Thread(target=self._worker, daemon=True)
@@ -154,9 +191,10 @@ def _make_win_sound():
 # Maze generation — recursive DFS (backtracker).
 # ---------------------------------------------------------------------------
 def generate_maze(cols, rows):
+    # Use recursive DFS to carve passages; the resulting set stores every open corridor.
     sys.setrecursionlimit(cols * rows * 4 + 500)
     visited = [[False] * rows for _ in range(cols)]
-    passages = set()
+    passages = set()  # each passage is a frozenset of the two connected cell coords
 
     def dfs(c, r):
         visited[c][r] = True
@@ -172,6 +210,7 @@ def generate_maze(cols, rows):
     return passages
 
 def can_move(passages, c, r, nc, nr):
+    # Return True if there is an open passage between cell (c,r) and cell (nc,nr).
     return frozenset([(c, r), (nc, nr)]) in passages
 
 # ---------------------------------------------------------------------------
@@ -192,7 +231,7 @@ class SizeSelectScreen:
             "Welcome to Accessible Maze Game. "
             "Use UP and DOWN arrows to choose maze size. "
             f"Current size is {self.size} by {self.size}. "
-            "Press ENTER to start. Press I for full instructions."
+            "Press ENTER to start. Press J for full instructions."
         )
 
     def handle(self, event):
@@ -206,15 +245,15 @@ class SizeSelectScreen:
             self.speech.speak(f"Size {self.size} by {self.size}", interrupt=True)
         elif event.key == pygame.K_SPACE:
             self.speech.speak(f"Current size is {self.size} by {self.size}", interrupt=True)
-        elif event.key == pygame.K_i:
+        elif event.key == pygame.K_j:
             self.speech.speak(
                 "Instructions. "
                 "Use UP and DOWN arrows to choose your maze size. "
                 "Press ENTER to start. "
                 "In the maze, use arrow keys to move. "
                 "Press SPACE to hear which directions are open or blocked. "
-                "Press Q to quit back to this menu. "
-                "Press R to reset the maze with the same size. "
+                "Press J to return to this menu. "
+                "Press F to reset the maze with the same size. "
                 "Good luck!",
                 interrupt=True
             )
@@ -242,13 +281,13 @@ class SizeSelectScreen:
             "UP / DOWN  — change maze size",
             "SPACE      — hear current size",
             "ENTER      — start game",
-            "I          — hear full instructions",
+            "J          — hear full instructions",
             "",
             "In game:",
             "ARROWS     — move",
             "SPACE      — scan directions (tones + speech)",
-            "Q          — quit to menu",
-            "R          — reset maze (same size)",
+            "J          — return to menu",
+            "F          — reset maze (same size)",
             "",
             "On win screen:",
             "ENTER      — new maze (same size)",
@@ -309,6 +348,7 @@ class MazeGame:
         return result
 
     def _announce_position(self):
+        # Speak the current column, row, open directions, and Manhattan distance to the exit.
         c, r   = self.player
         dirs   = self._open_dirs()
         opens  = [d for d, v in dirs.items() if v]
@@ -337,10 +377,12 @@ class MazeGame:
 
     # ------------------------------------------------------------------
     def handle_input(self, event):
+        # Process one keyboard event and return a state string if the screen should change.
         if event.type != pygame.KEYDOWN:
             return None
 
         if self.won:
+            # On the win screen, Enter starts a fresh maze and Space returns to the menu.
             if event.key == pygame.K_RETURN:
                 self.reset()
             elif event.key == pygame.K_SPACE:
@@ -373,10 +415,10 @@ class MazeGame:
 
         if event.key == pygame.K_SPACE:
             self._announce_position()
-        elif event.key == pygame.K_q:
+        elif event.key == pygame.K_j:
             self.speech.speak("Returning to menu.", interrupt=True)
             return "menu"
-        elif event.key == pygame.K_r:
+        elif event.key == pygame.K_f:
             self.speech.speak("Maze reset.", interrupt=True)
             self.reset()
 
@@ -473,6 +515,7 @@ class MazeGame:
 # Entry point
 # ---------------------------------------------------------------------------
 def main():
+    # Initialise pygame and the audio mixer, then run the state machine.
     pygame.init()
     pygame.mixer.init(frequency=SAMPLE_RATE, size=-16, channels=2, buffer=512)
     global SCREEN_W, SCREEN_H
@@ -482,7 +525,7 @@ def main():
 
     speech   = SpeechEngine()
     clock    = pygame.time.Clock()
-    state    = "menu"
+    state    = "menu"  # current screen: "menu" or "game"
     selector = SizeSelectScreen(screen, speech)
     game     = None
 

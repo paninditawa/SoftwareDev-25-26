@@ -137,7 +137,7 @@ try:
 except Exception:
     player_id = 0
 
-speak(f"Connected as player {player_id + 1}. Arrow keys to adjust each ship, R to rotate, Enter to confirm.")
+speak(f"Connected as player {player_id + 1}. Arrow keys to adjust each ship, J to rotate, Enter to confirm.")
 
 # Game state variables
 phase = "placement"
@@ -282,12 +282,12 @@ def describe_status() -> str:
             return "Confirming placement…"
         if placed_count < len(SHIP_ORDER):
             name, ln = SHIP_ORDER[placed_count]
-            return f"Placing {name} (len {ln}) — arrows to nudge, R to rotate, Enter to confirm"
+            return f"Placing {name} (len {ln}) — arrows to nudge, J to rotate, Enter to confirm"
         return "All ships placed. Waiting for opponent."
     if phase == "waiting":
         return "Waiting for opponent."
     if phase == "game_over":
-        return f"{game_over_message}  —  R to rematch, Q to quit"
+        return f"{game_over_message}  —  J to rematch, Escape to quit"
     return "YOUR TURN — arrows to aim, Enter or Space to fire" if my_turn else "Opponent's turn…"
 
 
@@ -571,7 +571,7 @@ while running:
                 speak_interrupt(f"Row {selected_row + 1}, {chr(ord('A') + selected_col)}")
             continue
 
-        if key == pygame.K_r:
+        if key == pygame.K_j:
             if phase == "placement" and placed_count < len(SHIP_ORDER):
                 orientation = "V" if orientation == "H" else "H"
                 # Clamp after rotation so ship stays on board
@@ -611,12 +611,10 @@ while running:
                 send_line(f"FIRE {selected_row} {selected_col}")
                 speak(f"Firing row {selected_row + 1}, {chr(ord('A') + selected_col)}.")
 
-        elif key in (pygame.K_q, pygame.K_ESCAPE) and phase == "game_over":
+        elif key == pygame.K_ESCAPE and phase == "game_over":
             send_line("QUIT")
             running = False
 
-        elif key == pygame.K_t:
-            SND_HIT.play()
 
 pygame.quit()
 try:

@@ -1,10 +1,11 @@
-"""Voice-first Hangman with keyboard fallback.
+"""
+Voice-first Hangman with keyboard fallback.
 
 Interaction model matches Escape Room / Mad Libs:
 - Hold SPACEBAR to speak one command.
 - Arrow keys move through letter buttons.
 - ENTER guesses the selected letter.
-- S reads status.
+- Up/Down reads status.
 - ESC exits.
 
 The visual hangman drawing and letter grid remain available.
@@ -359,9 +360,6 @@ class HangmanGame:
             letter = self.letters[self.selected_index]
             if letter[3]:
                 self._process_letter_guess(letter[2])
-        elif pygame.K_a <= event.key <= pygame.K_z:
-            ltr = chr(event.key - pygame.K_a + ord("A"))
-            self._process_letter_guess(ltr)
 
     def _process_voice_text(self, text: str) -> None:
         if not text:

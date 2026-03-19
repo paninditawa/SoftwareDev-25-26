@@ -1,4 +1,5 @@
-"""Voice-first Mad Libs game.
+"""
+Voice-first Mad Libs game.
 
 Controls:
 - Hold SPACEBAR to speak a command.
