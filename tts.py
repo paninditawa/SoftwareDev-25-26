@@ -22,6 +22,7 @@ import sys
 import subprocess
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 _DEBUG = False  # Set to True to enable debug output
@@ -124,6 +125,18 @@ def _say_gtts(text: str, interrupt: bool = False) -> bool:
     except Exception as e:
         _dbg(f"gTTS playback failed: {e}")
         return False
+
+
+def _wait_for_gtts_playback() -> None:
+    if not _mixer_ready:
+        return
+    try:
+        import pygame.mixer
+
+        while pygame.mixer.music.get_busy():
+            time.sleep(0.05)
+    except Exception as e:
+        _dbg(f"gTTS wait failed: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +248,28 @@ def speak(text: str) -> None:
     else:
         # Natural voice first, then offline fallbacks
         if _say_gtts(text, interrupt=False):
+            return
+        if sys.platform.startswith("win") and _say_sapi(text, interrupt=False):
+            return
+        if _say_pyttsx3(text, interrupt=False):
+            return
+        if sys.platform == "darwin" and _say_mac(text):
+            return
+
+    print(text)
+
+
+def speak_blocking(text: str) -> None:
+    """Speak text and wait until playback finishes when possible."""
+    if _forced_backend == "sapi":
+        if _say_sapi(text, interrupt=False):
+            return
+    elif _forced_backend == "pyttsx3":
+        if _say_pyttsx3(text, interrupt=False):
+            return
+    else:
+        if _say_gtts(text, interrupt=False):
+            _wait_for_gtts_playback()
             return
         if sys.platform.startswith("win") and _say_sapi(text, interrupt=False):
             return

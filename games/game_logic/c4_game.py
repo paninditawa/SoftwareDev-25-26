@@ -31,8 +31,12 @@ for _parent in _this_file.parents:
 # Cross-platform TTS helper
 try:
     from tts import speak as _tts_speak
+    from tts import speak_blocking as _tts_speak_blocking
 except ImportError:
     def _tts_speak(text: str):
+        print(text)
+
+    def _tts_speak_blocking(text: str):
         print(text)
 
 # -----------------------------
@@ -90,7 +94,7 @@ def _recommended_window_size(base_w: int, base_h: int) -> tuple[int, int]:
 # If TTS is unavailable, this will print text instead.
 
 def speak_block(text):
-    _tts_speak(text)
+    _tts_speak_blocking(text)
 
 
 def speak(text):
