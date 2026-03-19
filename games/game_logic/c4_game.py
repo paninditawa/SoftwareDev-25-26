@@ -10,6 +10,7 @@ Controls
 --------
 Left / Right — move the column selector
 Space        — drop your piece into the selected column
+J            — hear the full instructions again
 Up Arrow     — restart the game
 Down Arrow   — quit after the game is over
 Escape       — quit at any time
@@ -17,7 +18,6 @@ Escape       — quit at any time
 import pygame
 import numpy as np
 import sys
-import time
 from pathlib import Path
 
 # Ensure the project root containing `tts.py` is on sys.path.
@@ -31,8 +31,12 @@ for _parent in _this_file.parents:
 # Cross-platform TTS helper
 try:
     from tts import speak as _tts_speak
+    from tts import speak_blocking as _tts_speak_blocking
 except ImportError:
     def _tts_speak(text: str):
+        print(text)
+
+    def _tts_speak_blocking(text: str):
         print(text)
 
 # -----------------------------
@@ -54,6 +58,26 @@ YELLOW = (0, 113, 128)  # Player 2 piece color
 WHITE = (255, 255, 255)
 BOARD_HOLE = (241, 245, 249)  # background color inside each cell circle
 PIECE_TEXT = (255, 255, 255)  # number label drawn on top of each piece
+STARTUP_PROMPT_DELAY_MS = 3500
+FULL_TUTORIAL_TEXT = (
+    "Welcome to Connect Four. "
+    "Connect 4 is a two-player game played on a grid with seven columns. "
+    "On your turn, you choose a column number, and your piece drops to the lowest open space in that column. "
+    "Your goal is to make a line of four of your pieces in a row: either 4 across, 4 up and down, or 4 diagonally. "
+    "I'll tell you where each piece lands so you can track the board. "
+    "Take turns placing pieces, and the first player to connect four wins. "
+    "Use left and right arrow keys to move the selector. "
+    "Press spacebar to drop your piece. "
+    "Press J at any time to hear these instructions again. "
+    "Press the up arrow key to restart the game at any time. After a game, if you want to exit the game, press the down arrow key. "
+    "Let's play!"
+)
+SKIP_PROMPT_TEXT = (
+    "Welcome to Connect Four. "
+    "Press Enter now to skip the full instructions and start playing. "
+    "Otherwise, the instructions will begin in a moment. "
+    "After the game starts, press J any time to hear the instructions again."
+)
 
 
 def _recommended_window_size(base_w: int, base_h: int) -> tuple[int, int]:
@@ -90,11 +114,17 @@ def _recommended_window_size(base_w: int, base_h: int) -> tuple[int, int]:
 # If TTS is unavailable, this will print text instead.
 
 def speak_block(text):
-    _tts_speak(text)
+    _tts_speak_blocking(text)
 
 
 def speak(text):
     _tts_speak(text)
+
+
+def start_tutorial(screen, board, selector_col):
+    draw_board(screen, board, selector_col)
+    speak(SKIP_PROMPT_TEXT)
+    return pygame.time.get_ticks() + STARTUP_PROMPT_DELAY_MS
 
 # -----------------------------
 # SCOREBOARD
@@ -270,27 +300,8 @@ def main():
     turn = 1          # 1 = Player 1's turn, 2 = Player 2's turn
     selector_col = 3  # start the selector in the middle column
     game_over = False
-    tutorial_done = False  # blocks game input while the intro TTS is playing
-
-    time.sleep(2) # brief pause before tutorial starts
-
-    # Tutorial
-    speak_block(
-        "Welcome to Connect Four. "
-        "Connect 4 is a two‑player game played on a grid with seven columns. "
-        "On your turn, you choose a column number, and your piece drops to the lowest open space in that column. "
-        "Your goal is to make a line of four of your pieces in a row: either 4 across, 4 up and down, or 4 diagonally. "
-        "I'll tell you where each piece lands so you can track the board. "
-        "Take turns placing pieces, and the first player to connect four wins. "
-        "Use left and right arrow keys to move the selector. "
-        "Press spacebar to drop your piece. "
-        "Press the up arrow key to restart the game at any time. After a game, if you want to exit the game, press the down arrow key. "
-        "Let's play! "
-    )
-
-    draw_board(screen, board, selector_col)
-    # announce_column is deferred until the tutorial TTS finishes (see tutorial_done check below).
-    pygame.time.wait(500)  # give gTTS time to start playing before we check get_busy()
+    tutorial_done = False
+    tutorial_deadline = start_tutorial(screen, board, selector_col)
 
     while True:
         for event in pygame.event.get():
@@ -305,7 +316,11 @@ def main():
 
             if event.type == pygame.KEYDOWN:
                 if not tutorial_done:
-                    continue  # block all game input while the tutorial is still speaking
+                    if event.key == pygame.K_RETURN:
+                        tutorial_done = True
+                        speak_block("Skipping full instructions. Let's play.")
+                        announce_column(board, selector_col)
+                    continue
 
                 # Quit is allowed only after the game ends (Down arrow).
                 if event.key == pygame.K_DOWN:
@@ -314,6 +329,12 @@ def main():
                         pygame.quit()
                         sys.exit()
                     speak("Down arrow exits after a game ends. Press escape to quit now.")
+                    continue
+
+                if event.key == pygame.K_j:
+                    speak_block(FULL_TUTORIAL_TEXT)
+                    draw_board(screen, board, selector_col)
+                    announce_column(board, selector_col)
                     continue
 
                 # Up arrow restarts the game at any time.
@@ -361,10 +382,10 @@ def main():
                         else:
                             speak("Column full. Choose another column.")
 
-        # Unlock game play once the tutorial TTS finishes.
-        if not tutorial_done and not pygame.mixer.get_busy():
+        if not tutorial_done and pygame.time.get_ticks() >= tutorial_deadline:
+            speak_block(FULL_TUTORIAL_TEXT)
             tutorial_done = True
-            announce_column(board, selector_col)  # ready-to-play announcement
+            announce_column(board, selector_col)
 
         pygame.time.wait(20)
 

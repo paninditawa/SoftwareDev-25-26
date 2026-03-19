@@ -206,6 +206,7 @@ class VoiceListener:
         self.result_queue: queue.Queue[str] = queue.Queue()
         self._recognizer = None
         self._mic = None
+        self.unavailable_reason = "SpeechRecognition is not installed in this environment."
 
         if _sr_available:
             self._recognizer = sr.Recognizer()
@@ -221,8 +222,10 @@ class VoiceListener:
                 )
                 self._recognizer.dynamic_energy_threshold = False
                 self._recognizer.pause_threshold = 0.9
-            except Exception:
+                self.unavailable_reason = ""
+            except Exception as exc:
                 self._mic = None
+                self.unavailable_reason = f"Microphone setup failed ({type(exc).__name__}): {exc}"
 
     @property
     def available(self) -> bool:
@@ -585,11 +588,11 @@ class VoiceMadLibsGame:
     def run(self) -> None:
         if not self.voice.available:
             self.status_text = "Voice input unavailable"
-            self.detail_text = "SpeechRecognition/PyAudio not ready"
+            self.detail_text = self.voice.unavailable_reason or "Microphone unavailable for an unknown reason."
             speak(
                 "Voice input is unavailable. "
                 "This version uses spacebar and speech recognition only. "
-                "Please install and enable SpeechRecognition and PyAudio, then restart.",
+                "Please install and enable SpeechRecognition and PyAudio, or check microphone permissions and the default input device, then restart.",
                 interrupt=True,
             )
 

@@ -90,4 +90,53 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 brew install sdl2 sdl2_image sdl2_mixer sdl2_ttf pkg-config
 ```
 
+## Voice Input Setup (Hangman, Mad Libs, Escape Room)
+
+Voice input is cross-platform (Windows, macOS, Linux), but each machine must have:
+
+- SpeechRecognition installed.
+- PyAudio installed.
+- Microphone permissions enabled for desktop apps.
+- A working default input device selected before launching the game.
+
+Install voice dependencies:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+If your environment is older and missing voice deps, install directly:
+
+```bash
+python -m pip install SpeechRecognition PyAudio
+```
+
+If PyAudio fails to build on macOS/Linux, install PortAudio first:
+
+```bash
+# macOS (Homebrew)
+brew install portaudio
+
+# Ubuntu/Debian
+sudo apt-get install portaudio19-dev python3-pyaudio
+```
+
+Quick microphone check:
+
+```bash
+python -c "import speech_recognition as sr; print(len(sr.Microphone.list_microphone_names()))"
+```
+
+Expected result: a number greater than 0.
+
+## Common Voice Issues
+
+- "Voice input unavailable": Usually missing SpeechRecognition/PyAudio, blocked microphone permission, or no default mic selected.
+- Spoken letters not recognized well in Hangman: Speak a single letter clearly (for example "B" or "bee"). NATO words like "bravo" and "charlie" are also supported.
+- Works on one computer but not another: confirm both are using the same virtual environment and both ran pip install -r requirements.txt.
+
+## Recommended Python Version
+
+Python 3.11 or 3.12 is recommended for easiest cross-platform wheel support, especially for PyAudio.
+
 

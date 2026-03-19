@@ -471,6 +471,7 @@ class VoiceListener:
         self.result_queue = queue.Queue()
         self._recognizer = None
         self._mic = None
+        self.unavailable_reason = "SpeechRecognition is not installed."
         if _sr_available:
             self._recognizer = sr.Recognizer()
             try:
@@ -485,8 +486,10 @@ class VoiceListener:
                 )
                 self._recognizer.dynamic_energy_threshold = False
                 self._recognizer.pause_threshold = 0.9
-            except Exception:
+                self.unavailable_reason = ""
+            except Exception as exc:
                 self._mic = None
+                self.unavailable_reason = f"Microphone setup failed: {exc}"
 
     @property
     def available(self):
@@ -851,9 +854,10 @@ class EscapeRoomGame:
                 "Welcome to the Escape Room. "
                 "Voice commands are unavailable right now. "
                 "You can still play by typing commands and pressing enter. "
+                "Install SpeechRecognition and PyAudio, or check microphone permissions and the default input device. "
                 "Type start to begin, or help for instructions."
             )
-            self.status_text = "Type a command and press ENTER"
+            self.status_text = self.voice.unavailable_reason or "Type a command and press ENTER"
         else:
             speak(
                 "Welcome to the Escape Room. "
