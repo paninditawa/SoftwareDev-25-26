@@ -1,6 +1,6 @@
 """
-Battleship server — EchoFleet
-Auto-shuts down once both players have disconnected (no orphan processes).
+Battleship server — EchoFleet.
+Auto-shuts down once both players disconnect (no orphan processes).
 """
 from __future__ import annotations
 
@@ -12,25 +12,25 @@ import traceback
 
 from game import Game, SHIPS
 
-# Network settings
+# network settings
 HOST = "0.0.0.0"
 PORT = 5555
 
-# Game state variables
+# game state
 game = Game()
 connections: list[socket.socket | None] = [None, None]
 lock = threading.Lock()
 
-game_over = False          # set to True after a WIN/LOSE broadcast
-rematch_requests: set[int] = set()  # tracks which players have requested a rematch
+game_over = False                   # set True after WIN/LOSE broadcast
+rematch_requests: set[int] = set()  # tracks which players requested rematch
 
-# Track connected players so we know when to shut down
+# track connected players so we know when to shut down
 connected_count = 0
 connected_lock = threading.Lock()
 
 
 def parse_args() -> argparse.Namespace:
-    """Parses command-line arguments for host and port."""
+    """Parses CLI args for host and port."""
     p = argparse.ArgumentParser(description="EchoFleet Battleship server")
     p.add_argument("--host", default=HOST)
     p.add_argument("--port", type=int, default=PORT)
@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def _send(player_id: int, message: str) -> None:
-    """Sends a newline-terminated message to a specific player."""
+    """Sends a newline-terminated msg to a specific player."""
     conn = connections[player_id]
     if not conn:
         return
@@ -49,18 +49,18 @@ def _send(player_id: int, message: str) -> None:
 
 
 def broadcast(message: str) -> None:
-    """Sends a message to both players."""
+    """Sends a msg to both players."""
     for i in range(2):
         _send(i, message)
 
 
 def handle_client(conn: socket.socket, player_id: int) -> None:
     """
-    Handles all incoming messages from a single client in its own thread.
-    Processes placement, ready, fire, rematch, and quit commands.
+    Handles all incoming msgs from a single client in its own thread.
+    Processes placement, ready, fire, rematch, and quit cmds.
 
     Params:
-    conn (socket.socket) - the client connection,
+    conn (socket.socket) - client connection,
     player_id (int) - 0 or 1
     """
     global game, game_over, rematch_requests, connected_count
@@ -97,7 +97,7 @@ def handle_client(conn: socket.socket, player_id: int) -> None:
                         _send(player_id, "PLACE_ERR Invalid coordinates")
                         continue
 
-                    # Resolve ship name from index or raw token
+                    # resolve ship name from index or raw token
                     ship_name: str | None = None
                     try:
                         idx = int(ship_token)
@@ -176,7 +176,7 @@ def handle_client(conn: socket.socket, player_id: int) -> None:
                         rematch_requests.add(player_id)
                         _send(player_id, "REMATCH_OK")
                         if len(rematch_requests) == 2:
-                            # Both players agreed to rematch — reset all state and start over
+                            # both players agreed — reset all state + start over
                             game = Game()
                             game_over = False
                             rematch_requests.clear()
@@ -208,7 +208,7 @@ def handle_client(conn: socket.socket, player_id: int) -> None:
 
 def start(host: str, port: int) -> None:
     """
-    Binds the server socket, accepts both players, and starts their handler threads.
+    Binds the server socket, accepts both players, and starts handler threads.
 
     Params:
     host (str) - address to bind to,
@@ -233,7 +233,7 @@ def start(host: str, port: int) -> None:
             connected_count += 1
         threading.Thread(target=handle_client, args=(conn, player_id), daemon=True).start()
 
-    # Keep the main thread alive while daemon threads handle clients
+    # keep main thread alive while daemon threads handle clients
     threading.Event().wait()
 
 

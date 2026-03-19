@@ -1,30 +1,26 @@
-# Program: test_game_logic.py
-# Author: [Your Name]
-# Date: [MM/DD/YYYY]
-# Description: Unit tests for the HelloWorld GameSpace game logic modules.
-#              Covers Battleship game state, Connect Four logic, Escape Room
-#              puzzle system, Maze generation, and Mad Libs story selection.
-#              Run with: python -m pytest test_game_logic.py -v
+"""
+HelloWorld GameSpace — unit tests for all game logic modules.
+Covers Battleship, Connect Four, Escape Room, Maze, Mad Libs, and Hangman.
+Run with: python test_game_logic.py
+"""
 
 import sys
 import random
 from pathlib import Path
 
-# Paths to each game directory
+# paths to each game dir
 REPO_ROOT = Path(__file__).resolve().parent
 BATTLESHIP_DIR = REPO_ROOT / "games" / "Battleship"
 GAME_LOGIC_DIR = REPO_ROOT / "games" / "game_logic"
 
-# Add both game directories to the path so imports work
+# add both dirs to path so imports work
 sys.path.insert(0, str(BATTLESHIP_DIR))
 sys.path.insert(0, str(GAME_LOGIC_DIR))
 
 import unittest
 
 
-# ===========================================================================
-# BATTLESHIP — game.py
-# ===========================================================================
+# battleship — game.py
 
 class TestBattleshipShip(unittest.TestCase):
     """Tests for the Ship class in game.py."""
@@ -116,13 +112,13 @@ class TestBattleshipReadyAndFire(unittest.TestCase):
     """Tests for the ready system and firing mechanics."""
 
     def _place_all_ships(self, player):
-        """Helper that places all ships for one player in valid positions."""
+        """Helper — places all ships for one player in valid positions."""
         from game import SHIPS
         for i, (name, _) in enumerate(SHIPS):
             self.game.place_ship(player, name, i, 0, "H")
 
     def setUp(self):
-        """Create a game with all ships placed for both players."""
+        """Create a game w/ all ships placed for both players."""
         from game import Game
         self.game = Game()
         self._place_all_ships(0)
@@ -157,7 +153,7 @@ class TestBattleshipReadyAndFire(unittest.TestCase):
         """Firing at a ship cell should return HIT."""
         self.game.set_ready(0)
         self.game.set_ready(1)
-        # Player 1's ships are at row i, col 0
+        # player 1's ships are at row i, col 0
         result = self.game.process_fire(0, 0, 0)
         self.assertEqual(result["status"], "HIT")
 
@@ -166,7 +162,7 @@ class TestBattleshipReadyAndFire(unittest.TestCase):
         self.game.set_ready(0)
         self.game.set_ready(1)
         self.game.process_fire(0, 7, 7)
-        self.game.process_fire(1, 7, 7)  # give turn back to player 0
+        self.game.process_fire(1, 7, 7)  # give turn back to p0
         result = self.game.process_fire(0, 7, 7)
         self.assertEqual(result["status"], "USED")
 
@@ -189,10 +185,32 @@ class TestBattleshipReadyAndFire(unittest.TestCase):
         self.game.process_fire(0, 7, 7)  # miss
         self.assertEqual(self.game.turn, 1)
 
+    def test_win_detected_when_all_ships_sunk(self):
+        """Sinking all opponent ships should result in a WIN status."""
+        self.game.set_ready(0)
+        self.game.set_ready(1)
 
-# ===========================================================================
-# CONNECT FOUR — c4_game.py
-# ===========================================================================
+        # fully sink every ship except the last one
+        for ship in self.game.ships[1][:-1]:
+            for coord in list(ship.coords):
+                ship.hit(coord)
+
+        # on the last ship, hit all cells except one
+        last_ship = self.game.ships[1][-1]
+        remaining = list(last_ship.coords)
+        for coord in remaining[:-1]:
+            last_ship.hit(coord)
+
+        # force p0's turn and fire the final cell thru process_fire
+        self.game.turn = 0
+        final_coord = remaining[-1]
+        result = self.game.process_fire(0, final_coord[0], final_coord[1])
+
+        self.assertEqual(result["status"], "HIT")
+        self.assertTrue(result.get("win"), "expected win=True but got: " + str(result))
+
+
+# connect four — c4_game.py
 
 class TestConnectFour(unittest.TestCase):
     """Tests for the Connect Four logic functions."""
@@ -254,7 +272,7 @@ class TestConnectFour(unittest.TestCase):
     def test_diagonal_win_detected(self):
         """Four in a diagonal should be detected as a win."""
         board = self.create_board()
-        # Build a bottom-left to top-right diagonal for player 1
+        # build bottom-left to top-right diagonal for p1
         for col in range(4):
             for filler in range(col):
                 self.drop_piece(board, col, 2)
@@ -281,9 +299,7 @@ class TestConnectFour(unittest.TestCase):
         self.assertIn("Player 1", desc)
 
 
-# ===========================================================================
-# ESCAPE ROOM — escape_room_game.py
-# ===========================================================================
+# escape room — escape_room_game.py
 
 class TestEscapeRoomPuzzles(unittest.TestCase):
     """Tests for the Puzzle, SoundPuzzle, and SequencePuzzle classes."""
@@ -377,9 +393,7 @@ class TestEscapeRoomPuzzles(unittest.TestCase):
             self.assertIn(level.escape_room, level.rooms)
 
 
-# ===========================================================================
-# MAZE GAME — maze_game.py
-# ===========================================================================
+# maze game — maze_game.py
 
 class TestMazeGeneration(unittest.TestCase):
     """Tests for maze generation and movement logic."""
@@ -413,7 +427,7 @@ class TestMazeGeneration(unittest.TestCase):
     def test_can_move_returns_false_for_no_passage(self):
         """can_move should return False when no passage exists between two cells."""
         from maze_game import can_move
-        # Empty passage set means no connections at all
+        # empty passage set means no connections at all
         self.assertFalse(can_move(set(), 0, 0, 0, 1))
 
     def test_can_move_returns_true_for_existing_passage(self):
@@ -423,16 +437,13 @@ class TestMazeGeneration(unittest.TestCase):
         self.assertTrue(can_move(passages, 0, 0, 0, 1))
 
     def test_maze_passage_count_reasonable(self):
-        """A 5x5 maze should have exactly 24 passages (one per non-root cell in DFS tree)."""
+        """A 5x5 maze should have exactly 24 passages (spanning tree = cols*rows - 1 edges)."""
         from maze_game import generate_maze
         passages = generate_maze(5, 5)
-        # A perfect maze (spanning tree) has exactly cols*rows - 1 edges
         self.assertEqual(len(passages), 5 * 5 - 1)
 
 
-# ===========================================================================
-# MAD LIBS — madlibs_game.py
-# ===========================================================================
+# mad libs — madlibs_game.py
 
 class TestMadLibs(unittest.TestCase):
     """Tests for Mad Libs story data and word option structure."""
@@ -446,9 +457,9 @@ class TestMadLibs(unittest.TestCase):
         """Each story must have title, prompts, and story keys."""
         from madlibs_game import MADLIBS_STORIES
         for key, story in MADLIBS_STORIES.items():
-            self.assertIn("title", story, f"Story '{key}' missing title")
-            self.assertIn("prompts", story, f"Story '{key}' missing prompts")
-            self.assertIn("story", story, f"Story '{key}' missing story template")
+            self.assertIn("title", story, f"story '{key}' missing title")
+            self.assertIn("prompts", story, f"story '{key}' missing prompts")
+            self.assertIn("story", story, f"story '{key}' missing story template")
 
     def test_story_prompts_match_template_slots(self):
         """Story template should fill correctly with the number of prompts provided."""
@@ -460,7 +471,7 @@ class TestMadLibs(unittest.TestCase):
                 filled = story["story"].format(*dummy_words)
                 self.assertIsInstance(filled, str)
             except IndexError as e:
-                self.fail(f"Story '{key}' has more template slots than prompts: {e}")
+                self.fail(f"story '{key}' has more template slots than prompts: {e}")
 
     def test_word_options_exist_for_common_types(self):
         """Common word types like adjective and noun should have option lists."""
@@ -478,7 +489,7 @@ class TestMadLibs(unittest.TestCase):
                 filled = story["story"].format(*dummy_words)
                 self.assertIsInstance(filled, str)
             except Exception as e:
-                self.fail(f"Story '{key}' failed to fill: {e}")
+                self.fail(f"story '{key}' failed to fill: {e}")
 
     def test_select_story_from_command_by_number(self):
         """Saying '1' should select the first story."""
@@ -509,9 +520,7 @@ class TestMadLibs(unittest.TestCase):
             pygame.quit()
 
 
-# ===========================================================================
-# HANGMAN — hangman_game.py
-# ===========================================================================
+# hangman — hangman_game.py
 
 class TestHangman(unittest.TestCase):
     """Tests for Hangman letter extraction and game state logic."""
@@ -570,7 +579,7 @@ class TestHangman(unittest.TestCase):
         """All words in the Hangman word list should be uppercase."""
         from hangman_game import WORDS
         for word in WORDS:
-            self.assertEqual(word, word.upper(), f"Word '{word}' is not uppercase")
+            self.assertEqual(word, word.upper(), f"word '{word}' is not uppercase")
 
 
 if __name__ == "__main__":
