@@ -140,34 +140,39 @@ except Exception:
 speak(f"Connected as player {player_id + 1}. Arrow keys to adjust each ship, J to rotate, Enter to confirm.")
 
 # Game state variables
+# Valid phases: "placement" → "waiting" → "battle" → "game_over"
 phase = "placement"
-placed_count = 0
-orientation = "H"
+placed_count = 0   # how many ships have been confirmed by the server so far
+orientation = "H"  # current ship orientation for placement ("H" or "V")
 
+# own_ships: True where this player has a ship cell (for drawing the left grid)
 own_ships = [[False] * BOARD_SIZE for _ in range(BOARD_SIZE)]
+# hits_on_me: True/False for HIT/MISS on this player's grid (sent by server as OPPONENT_FIRE)
 hits_on_me = [[None] * BOARD_SIZE for _ in range(BOARD_SIZE)]
+# hits_on_opponent: "hit"/"miss" for shots fired at the opponent's grid
 hits_on_opponent = [[None] * BOARD_SIZE for _ in range(BOARD_SIZE)]
 
 selected_row = 0
 selected_col = 0
 
 # Pending placement data while waiting for server confirmation
+# These are set when a PLACE message is sent and cleared when PLACE_OK/PLACE_ERR arrives
 pending_row = None
 pending_col = None
 pending_orient = None
-pending_index = None
+pending_index = None  # ship index in SHIP_ORDER that is currently awaiting confirmation
 
-lock = threading.Lock()
-my_turn = False
-ready = False
-opponent_ready = False
-awaiting_place_response = False
-last_place_time = 0.0
+lock = threading.Lock()  # guards shared state accessed by both the main and listener threads
+my_turn = False           # True when it is this client's turn to fire
+ready = False             # True after sending READY and receiving READY_OK
+opponent_ready = False    # True after receiving OPPONENT_READY from server
+awaiting_place_response = False   # True while waiting for PLACE_OK/PLACE_ERR from server
+last_place_time = 0.0             # timestamp of the last PLACE send (used for timeout)
 server_connected = True
 server_error = ""
 game_over_message = ""
 i_won = False
-_place_ok_count = 0
+_place_ok_count = 0  # counts consecutive PLACE_OK responses; triggers READY once all ships confirmed
 
 
 def _make_random_layout() -> list[tuple[int, int, str]]:

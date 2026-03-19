@@ -16,7 +16,7 @@ SHIPS = [
     ("Destroyer", 2),
 ]
 
-Coordinate = Tuple[int, int]
+Coordinate = Tuple[int, int]  # (row, col) board position
 
 
 class Ship:
@@ -54,10 +54,10 @@ class Ship:
 class Game:
     def __init__(self):
         """Initializes an empty game with two players, no ships placed."""
-        self.ships: List[List[Ship]] = [[], []]
-        self.shots: List[Set[Coordinate]] = [set(), set()]
-        self.ready: List[bool] = [False, False]
-        self.turn: int = 0
+        self.ships: List[List[Ship]] = [[], []]   # ships[0] / ships[1] for each player
+        self.shots: List[Set[Coordinate]] = [set(), set()]  # cells already fired at
+        self.ready: List[bool] = [False, False]  # whether each player has confirmed all ships
+        self.turn: int = 0  # index of the player whose turn it is (0 goes first)
 
     def _ship_coords(self, row: int, col: int, length: int, orientation: str) -> Optional[List[Coordinate]]:
         """
@@ -136,8 +136,12 @@ class Game:
         Processes a fire action from a player.
 
         Returns:
-        Dict with status and hit details. Possible statuses:
-        NOT_READY, WAIT, USED, HIT, MISS
+        Dict with 'status' key. Possible statuses:
+          NOT_READY - game hasn't started yet
+          WAIT      - it's not this player's turn
+          USED      - cell was already fired at
+          MISS      - shot missed all ships
+          HIT       - shot hit a ship; also contains 'ship' (str), 'sunk' (bool), 'win' (bool)
         """
         if not self.all_ready():
             return {"status": "NOT_READY"}

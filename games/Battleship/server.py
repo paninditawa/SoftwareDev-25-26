@@ -21,8 +21,8 @@ game = Game()
 connections: list[socket.socket | None] = [None, None]
 lock = threading.Lock()
 
-game_over = False
-rematch_requests: set[int] = set()
+game_over = False          # set to True after a WIN/LOSE broadcast
+rematch_requests: set[int] = set()  # tracks which players have requested a rematch
 
 # Track connected players so we know when to shut down
 connected_count = 0
@@ -176,7 +176,7 @@ def handle_client(conn: socket.socket, player_id: int) -> None:
                         rematch_requests.add(player_id)
                         _send(player_id, "REMATCH_OK")
                         if len(rematch_requests) == 2:
-                            # Both players agreed — reset the game
+                            # Both players agreed to rematch — reset all state and start over
                             game = Game()
                             game_over = False
                             rematch_requests.clear()
