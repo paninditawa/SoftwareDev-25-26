@@ -11,8 +11,8 @@ Interaction model matches Escape Room / Mad Libs:
 The visual hangman drawing and letter grid remain available.
 """
 
+#Imports required libraries
 from __future__ import annotations
-
 import pygame
 import sys
 import random
@@ -32,6 +32,7 @@ for _parent in _this_file.parents:
             sys.path.insert(0, str(_parent))
         break
 
+# Text-to-speech setup 
 try:
     from tts import speak as _tts_speak, speak_interrupt as _tts_speak_interrupt
 except ImportError:
@@ -41,6 +42,7 @@ except ImportError:
     def _tts_speak_interrupt(text: str):
         print(text)
 
+#Setting up speech recognition
 _sr_available = False
 try:
     import speech_recognition as sr
@@ -48,6 +50,7 @@ try:
 except ImportError:
     pass
 
+#GUI constants
 WIDTH = 1000
 HEIGHT = 700
 FPS = 60
@@ -63,6 +66,7 @@ WORDS = ["SOFTWARE", "DEVELOPMENT", "TECHNOLOGY", "STUDENT", "ASSOCIATION", "UNI
 SAMPLE_RATE = 22050
 
 
+# Adjust window size based on screen
 def _recommended_window_size(base_w: int, base_h: int) -> tuple[int, int]:
     screen_w = base_w
     screen_h = base_h
@@ -86,11 +90,12 @@ def _recommended_window_size(base_w: int, base_h: int) -> tuple[int, int]:
         if info.current_h > 0:
             screen_h = info.current_h
 
+    # Clamp size to fit screen
     width = max(base_w, min(screen_w - 40, int(screen_w * 0.96)))
     height = max(base_h, min(screen_h - 60, int(screen_h * 0.94)))
     return width, height
 
-
+# Generate a short beep sound (used when listening)
 def _make_tone(frequency: int, duration: float, volume: float = 0.25) -> pygame.mixer.Sound | None:
     try:
         if not pygame.mixer.get_init():
@@ -105,9 +110,10 @@ def _make_tone(frequency: int, duration: float, volume: float = 0.25) -> pygame.
     except Exception:
         return None
 
+# Track last spoken message for UI display
 last_spoken = ""
 
-
+# Extract a spoken letter from voice input
 def speak(text: str, interrupt: bool = False) -> None:
     global last_spoken
     last_spoken = text
@@ -116,7 +122,7 @@ def speak(text: str, interrupt: bool = False) -> None:
     else:
         _tts_speak(text)
 
-
+#Says who wins
 def _report_win() -> None:
     import os
 
@@ -142,7 +148,7 @@ def _report_win() -> None:
 
     threading.Thread(target=_write, daemon=True).start()
 
-
+# Extract commands like "start", "quit", etc.
 def _extract_letter(text: str) -> str | None:
     text = re.sub(r"[^A-Z\s'-]", " ", text.upper())
     text = text.replace("-", " ")
@@ -202,7 +208,7 @@ def _extract_letter(text: str) -> str | None:
 
     return None
 
-
+# Extract commands like "start", "quit", etc.
 def _extract_command(text: str) -> str | None:
     text = text.lower().strip()
     if any(w in text for w in ["status", "how am i doing", "progress", "how many"]):
@@ -215,7 +221,7 @@ def _extract_command(text: str) -> str | None:
         return "quit"
     return None
 
-
+# Voice listener (runs in background thread)
 class VoiceListener:
     def __init__(self):
         self.result_queue: queue.Queue[str] = queue.Queue()
@@ -278,7 +284,7 @@ class VoiceListener:
         except queue.Empty:
             return None
 
-
+# Main Hangman Game Class
 class HangmanGame:
     def __init__(self):
         pygame.init()
@@ -339,6 +345,7 @@ class HangmanGame:
         )
         speak(msg, interrupt=True)
 
+    # Reset game state
     def reset_game(self, announce: bool = True) -> None:
         self.word = random.choice(WORDS)
         self.guessed: list[str] = []
@@ -355,6 +362,7 @@ class HangmanGame:
         if announce:
             speak(f"New game. The word has {len(self.word)} letters.", interrupt=True)
 
+    # Create A–Z letter buttons
     def create_buttons(self) -> None:
         x_start = round((WIDTH - (RADIUS * 2 + SPACE) * 13) / 2)
         y_start = 540
@@ -370,6 +378,8 @@ class HangmanGame:
         self.status_text = "Game in progress"
         self.detail_text = "Use left/right + ENTER, up/down for status, or hold SPACEBAR and say a letter"
 
+
+    # Process a guessed letter
     def _process_letter_guess(self, ltr: str) -> None:
         match = next((l for l in self.letters if l[2] == ltr), None)
         if match is None:
@@ -395,6 +405,7 @@ class HangmanGame:
 
         self.detail_text = f"Guessed letters: {', '.join(sorted(self.guessed)) if self.guessed else 'none'}"
 
+    #Will handle the state of the game after t ends
     def check_game_over(self) -> None:
         won = all(letter in self.guessed for letter in self.word)
         if won:
@@ -407,6 +418,7 @@ class HangmanGame:
             self.result = "lose"
             self.result_announced = False
 
+    #Moves the selected letter
     def _move_selection(self, step: int) -> None:
         for _ in range(26):
             self.selected_index = (self.selected_index + step) % 26
@@ -414,6 +426,7 @@ class HangmanGame:
                 break
         speak(self.letters[self.selected_index][2])
 
+    #Allows user to use keyboard to pick letters
     def _handle_playing_keyboard(self, event) -> None:
         if event.type != pygame.KEYDOWN:
             return
@@ -429,6 +442,7 @@ class HangmanGame:
             if letter[3]:
                 self._process_letter_guess(letter[2])
 
+    #Analyzes input recieved from user speech
     def _process_voice_text(self, text: str) -> None:
         if not text:
             self.status_text = "I did not catch that"
@@ -479,6 +493,7 @@ class HangmanGame:
                 return
             speak("Say restart to play again, or quit.", interrupt=True)
 
+    #Draws the handman figure depending on current game status
     def draw_hangman(self) -> None:
         x = 150
         y = 450
@@ -499,6 +514,7 @@ class HangmanGame:
         if self.hangman >= 6:
             pygame.draw.line(self.win, TEXT_COLOR, (x + 200, y - 120), (x + 230, y - 80), 3)
 
+    #Draws the menu for the user to pick from
     def draw_menu(self) -> None:
         self.win.fill(BG_COLOR)
         max_w = WIDTH - 40
@@ -511,6 +527,7 @@ class HangmanGame:
         text = self.word_font.render(menu_line, True, TEXT_COLOR)
         self.win.blit(text, (WIDTH / 2 - text.get_width() / 2, 330))
 
+        #Handles user voice input
         mic_status = "Microphone: ON" if self.voice.available else "Microphone: OFF (keyboard mode)"
         while mic_status and self.small_font.size(mic_status)[0] > max_w:
             mic_status = mic_status[:-1]
@@ -522,6 +539,7 @@ class HangmanGame:
         self.win.blit(hint, (WIDTH / 2 - hint.get_width() / 2, 455))
         pygame.display.update()
 
+    #Draws out the game
     def draw_game(self) -> None:
         self.win.fill(BG_COLOR)
         title = self.title_font.render("Hangman", True, TEXT_COLOR)
@@ -531,6 +549,7 @@ class HangmanGame:
         text = self.word_font.render(display_word, True, TEXT_COLOR)
         self.win.blit(text, (WIDTH / 2 - text.get_width() / 2, 250))
 
+        #Shows all the letters to choose from
         for i, letter in enumerate(self.letters):
             x, y, ltr, visible = letter
             if visible:
@@ -562,6 +581,7 @@ class HangmanGame:
         self.draw_hangman()
         pygame.display.update()
 
+    #Tells the user the result of the game
     def draw_result(self) -> None:
         self.win.fill(BG_COLOR)
         if self.result == "win":
@@ -581,11 +601,13 @@ class HangmanGame:
                 )
                 self.result_announced = True
 
+        #Fits text onto screen
         while msg and self.title_font.size(msg)[0] > WIDTH - 40:
             msg = msg[:-1]
         text = self.title_font.render(msg, True, TEXT_COLOR)
         self.win.blit(text, (WIDTH / 2 - text.get_width() / 2, 280))
 
+        #Fits text onto screen
         while sub_line and self.word_font.size(sub_line)[0] > WIDTH - 40:
             sub_line = sub_line[:-1]
         sub = self.word_font.render(sub_line, True, TEXT_COLOR)
@@ -593,6 +615,7 @@ class HangmanGame:
 
         pygame.display.update()
 
+    #Runs the game
     def run(self) -> None:
         while True:
             for event in pygame.event.get():
@@ -605,6 +628,7 @@ class HangmanGame:
                     pygame.quit()
                     sys.exit()
 
+                #Listns for user input
                 if self.voice.available:
                     if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE and not self.listening:
                         self.listening = True
@@ -618,6 +642,7 @@ class HangmanGame:
                         if letter[3]:
                             self._process_letter_guess(letter[2])
 
+                #Allows user to continue playing
                 if self.state == "menu":
                     if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
                         self._start_game()
@@ -631,7 +656,8 @@ class HangmanGame:
                             speak("You won. Press enter or say restart to play again.", interrupt=True)
                         else:
                             speak(f"You lost. The word was {self.word}. Press enter or say restart.", interrupt=True)
-
+           
+            #Listens and handles user speech inpit
             if self.listening:
                 result = self.voice.get_result()
                 if result is not None:
@@ -650,7 +676,7 @@ class HangmanGame:
 
             self.clock.tick(FPS)
 
-
+#Runs the game
 if __name__ == "__main__":
     game = HangmanGame()
     game.run()
