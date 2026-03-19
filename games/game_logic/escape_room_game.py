@@ -1,5 +1,5 @@
-"""
-Accessible Escape Room — fully voice-activated for blind players.
+"""Accessible Escape Room — fully voice-activated for blind players.
+
 Hold SPACEBAR to speak a command. Release to submit.
 
 Architecture:
@@ -40,7 +40,7 @@ except ImportError:
 # Optional speech recognition (the game still runs without it (keyboard-only))
 _sr_available = False
 try:
-    import speech_recognition as sr  # pyright: ignore[reportMissingImports]
+    import speech_recognition as sr
     _sr_available = True
 except ImportError:
     pass
@@ -48,34 +48,6 @@ except ImportError:
 #Audio constants and helper variables for text to speech.
 SAMPLE_RATE = 44100
 SCREEN_W, SCREEN_H = 600, 400
-
-
-def _recommended_window_size(base_w: int, base_h: int) -> tuple[int, int]:
-    screen_w = base_w
-    screen_h = base_h
-
-    if sys.platform.startswith("win"):
-        try:
-            import ctypes
-            from ctypes import wintypes
-
-            rect = wintypes.RECT()
-            SPI_GETWORKAREA = 0x0030
-            if ctypes.windll.user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(rect), 0):
-                screen_w = rect.right - rect.left
-                screen_h = rect.bottom - rect.top
-        except Exception:
-            pass
-    else:
-        info = pygame.display.Info()
-        if info.current_w > 0:
-            screen_w = info.current_w
-        if info.current_h > 0:
-            screen_h = info.current_h
-
-    width = max(base_w, min(screen_w - 40, int(screen_w * 0.96)))
-    height = max(base_h, min(screen_h - 60, int(screen_h * 0.94)))
-    return width, height
 
 
 def _tone(freq, dur=0.15, vol=0.4):
@@ -118,30 +90,6 @@ def speak(text, interrupt=False):
     else:
         _tts_speak(text)
 
-# ---------------------------------------------------------------------------
-# Scoreboard
-# ---------------------------------------------------------------------------
-
-def _report_win() -> None:
-    import os
-    user_id  = os.environ.get("HW_USER_ID",  "")
-    username = os.environ.get("HW_USERNAME", "")
-    if not user_id:
-        return
-    def _write():
-        try:
-            _repo_root = Path(__file__).resolve()
-            while _repo_root != _repo_root.parent:
-                if (_repo_root / "tts.py").exists():
-                    break
-                _repo_root = _repo_root.parent
-            sys.path.insert(0, str(_repo_root))
-            from launcher.services.leaderboard import Scoreboard
-            sb = Scoreboard.from_workspace(_repo_root)
-            sb.record_win(user_id, username, "escape")
-        except Exception as exc:
-            print(f"scoreboard write failed: {exc}")
-    threading.Thread(target=_write, daemon=True).start()
 
 # Puzzle classes - Creates the puzzles for the rooms.
 class Puzzle:
@@ -526,26 +474,15 @@ class VoiceListener:
         self.result_queue = queue.Queue()  # thread-safe results channel
         self._recognizer = None
         self._mic = None
-        self.unavailable_reason = "SpeechRecognition is not installed."
         if _sr_available:
             self._recognizer = sr.Recognizer()
             try:
                 self._mic = sr.Microphone()
                 # Brief calibration to adapt to background noise
                 with self._mic as source:
-                    # Longer calibration window gives a more accurate noise floor.
-                    self._recognizer.adjust_for_ambient_noise(source, duration=1.0)
-                # Nudge threshold down so quiet speech is reliably detected,
-                # then pin it so dynamic adjustment can't drift it upward mid-session.
-                self._recognizer.energy_threshold = max(
-                    self._recognizer.energy_threshold * 0.8, 200
-                )
-                self._recognizer.dynamic_energy_threshold = False
-                self._recognizer.pause_threshold = 0.9
-                self.unavailable_reason = ""
-            except Exception as exc:
+                    self._recognizer.adjust_for_ambient_noise(source, duration=0.3)
+            except Exception:
                 self._mic = None
-                self.unavailable_reason = f"Microphone setup failed: {exc}"
 
     @property
     def available(self):
@@ -567,7 +504,7 @@ class VoiceListener:
                 text = self._recognizer.recognize_google(audio)
                 self.result_queue.put(text.lower().strip())
             except Exception:
-                self.result_queue.put("")
+                self.result_queue.put("")  # timeout or recognition error
         threading.Thread(target=_work, daemon=True).start()
 
     def get_result(self):
@@ -584,13 +521,11 @@ class EscapeRoomGame:
     def __init__(self):
         pygame.init()
         pygame.mixer.init(frequency=SAMPLE_RATE, size=-16, channels=2, buffer=512)
-        global SCREEN_W, SCREEN_H
-        SCREEN_W, SCREEN_H = _recommended_window_size(SCREEN_W, SCREEN_H)
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
         pygame.display.set_caption("Escape Room")
         self.clock = pygame.time.Clock()
-        self.font = pygame.font.SysFont("segoeui", 36, bold=False)
-        self.small_font = pygame.font.SysFont("segoeui", 26, bold=False)
+        self.font = pygame.font.SysFont(None, 32)
+        self.small_font = pygame.font.SysFont(None, 24)
 
         # Pre-generate all sound effects so there's no lag during gameplay
         self.snd_good = _chord([523, 659, 784], 0.35)           # C major chord: correct answer
@@ -602,25 +537,30 @@ class EscapeRoomGame:
         self.snd_listen = _tone(880, 0.06, 0.3)                  # tiny chirp: recording started
 
         self.voice = VoiceListener()
-        self.keyboard_mode = not self.voice.available
         self.levels = build_levels()
 
         # Game state machine: menu → level_select → playing → victory
         self.state = "menu"
         self.current_level = None
         self.current_room = None
-        self.inventory = []
-        self.completed = set()
-        self.listening = False
+        self.inventory = []       # items collected during current level
+        self.completed = set()    # indices of beaten levels
+        self.listening = False    # True while waiting for speech result
         self.status_text = "Hold SPACEBAR to speak"
 
 
     def draw(self):
+        """Minimal visual display — the game is primarily audio-driven.
+        
+        Shows the current status text and a red dot when listening.
+        Sighted players or developers can see what's happening at a glance.
+        """
         self.screen.fill((10, 10, 15))
         surf = self.font.render(self.status_text, True, (180, 180, 200))
         self.screen.blit(surf, (SCREEN_W // 2 - surf.get_width() // 2, SCREEN_H // 2 - 40))
 
         if self.listening:
+            # Red recording indicator
             pygame.draw.circle(self.screen, (220, 60, 60), (SCREEN_W // 2, SCREEN_H // 2 + 30), 12)
             s = self.small_font.render("Listening...", True, (220, 60, 60))
             self.screen.blit(s, (SCREEN_W // 2 - s.get_width() // 2, SCREEN_H // 2 + 50))
@@ -655,7 +595,6 @@ class EscapeRoomGame:
             speak(
                 "This is a voice-activated escape room. "
                 "Hold spacebar to speak, then let go. "
-                "If voice is unavailable, type a command and press enter. "
                 "You'll explore rooms, solve puzzles, and collect items to escape. "
                 "Say things like: look around, go north, hint, inventory, or solve followed by your answer. "
                 "Say start to begin."
@@ -770,7 +709,6 @@ class EscapeRoomGame:
         self.completed.add(idx)
         self.state = "victory"
         self.snd_win.play()
-        _report_win()
         speak("You escaped " + self.current_level.name + "! Say continue for another level, or quit to exit.")
 
     # Handles playing an actual level in a room
@@ -945,6 +883,7 @@ class EscapeRoomGame:
         """
         time.sleep(0.5)
 
+        # If speech recognition isn't installed throw an error
         if not self.voice.available:
             speak(
                 "Welcome to the Escape Room. "
@@ -961,6 +900,7 @@ class EscapeRoomGame:
                 self.draw()
                 self.clock.tick(15)
 
+        # Normal startup with voice available
         speak(
             "Welcome to the Escape Room. "
             "Hold the spacebar to speak, then let go. "
@@ -974,6 +914,7 @@ class EscapeRoomGame:
                     pygame.quit()
                     sys.exit()
 
+                # SPACEBAR triggers voice recognition
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                     if not self.listening:
                         self.listening = True
