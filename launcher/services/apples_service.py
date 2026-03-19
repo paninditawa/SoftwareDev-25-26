@@ -1,9 +1,8 @@
 """
 Apples to Apples game service for the HelloWorld GameSpace launcher.
 
-This module runs the whole Apples to Apples card game locally using
-SQLite.  It stores games, players, hands, and card submissions in a
-small database file (apples_min.db) inside the games/apples/ folder.
+This module runs the whole Apples to Apples card game using Supabase.  
+It stores games, players, hands, and card submissions in the database.
 
 Key concepts
 ------------
@@ -21,16 +20,14 @@ from __future__ import annotations
 # Standard-library modules
 import json       # used to store card lists as JSON strings in SQLite
 import random     # used to shuffle decks and pick random prompts
-import secrets    # used to generate cryptographically safe game codes and tokens
-import sqlite3    # local database for game state
-from pathlib import Path  # cross-platform file path handling
+from typing import Any  # used for type annotations
+from supabase import create_client # used to connect to the hosted Supabase database
+from supabase_project import SUPABASE_ANON_KEY, SUPABASE_URL #  used to get the Supabase credentials from supabase_project.py
 
-# Path to the SQLite database file, relative to this source file.
-DATA_PATH = Path(__file__).resolve().parents[2] / "games" / "apples" / "apples_min.db"
 # How many red cards each player holds in their hand at a time.
 HAND_SIZE = 10
 
-# --- Green deck base prompts (each gets three variants added automatically) ---
+# Green deck base prompts
 GREEN_BASE = [
     "The worst thing to say on a first date:",
     "The most awkward family tradition:",
@@ -44,370 +41,457 @@ GREEN_BASE = [
     "A phrase that should never be on a t-shirt:",
 ]
 
-# --- Word lists used to procedurally generate the red (answer) deck ---
-ADJECTIVES = [
-    "haunted", "tiny", "gigantic", "mysterious", "unreasonably confident", "overly dramatic", "cursed", "sparkly",
-    "noisy", "invisible", "self-aware", "gluten-free", "sad", "legendary", "suspicious", "extremely polite", "weird",
-    "ancient", "futuristic", "sticky", "chaotic", "friendly", "aggressively helpful", "melancholy", "radioactive",
-]
+# Red deck cards (answers to the prompts)
+RED_BASE = [
+    "A broken elevator.",
+    "An apology email to your future self.",
+    "A hamster with a mortgage.",
+    "A Wi-Fi router with trust issues.",
+    "A voicemail from your fridge.",
+    "A calendar invite that says 'be there or be square'.",
+    "An accidentally sent screenshot.",
+    "A typo that changes everything.",
+    "A stranger's grocery list.",
+    "A group chat that never stops buzzing.",
+    "An autocorrect disaster.",
+    "A suspiciously cheap hotel.",
+    "A dog that thinks it's a cat.",
+    "An overdramatic weather forecast.",
+    "A microwave that beeps forever.",
+    "A failed attempt at being cool.",
+    "A Zoom call that won’t end.",
+    "A phone battery at 1 percent.",
+    "A playlist full of guilty pleasures.",
+    "A neighbor who mows the lawn at 6 AM.",
+    "An awkward silence that lasts too long.",
+    "A forgotten password you desperately need.",
+    "A sock that disappears in the laundry.",
+    "A typo in an important email.",
+    "A GPS that keeps rerouting.",
+    "A chair that squeaks every time you move.",
+    "An alarm that doesn’t wake you up.",
+    "A group project where you do everything.",
+    "A joke that no one understands.",
+    "A meeting that could have been an email.",
+    "A broken vending machine.",
+    "A suspicious smell you can’t locate.",
+    "A long hold music loop.",
+    "An unfinished homework assignment.",
+    "A dramatic reading of a text message.",
+    "A chair with one slightly shorter leg.",
+    "A confusing set of instructions.",
+    "A pen that runs out mid-sentence.",
+    "A sneeze that won’t come out.",
+    "A fridge full of nothing to eat.",
+    "A random burst of motivation at midnight.",
+    "A keyboard that types double letters.",
+    "A forgotten birthday.",
+    "A really bad haircut.",
+    "A painfully slow internet connection.",
+    "A mystery stain.",
+    "A random notification that means nothing.",
+    "A door that won’t open the right way.",
+    "A “quick question” that isn’t quick.",]
 
-NOUNS = [
-    "microwave", "toaster", "pigeon", "raccoon", "spoon", "calculator", "group chat", "sock", "email thread",
-    "rubber duck", "elevator", "vacuum", "meme", "cactus", "hamster", "printer", "Wi-Fi router", "doorbell",
-    "traffic cone", "treadmill", "calendar invite", "laptop", "spaghetti", "stapler", "thermostat",
-]
+# initialized Supabase client
+def get_supabase():
+    return create_client(SUPABASE_URL.strip(), SUPABASE_ANON_KEY.strip())
+supabase = get_supabase()
 
-VERBS = [
-    "that only works when you cry",
-    "that judges you silently",
-    "that demands compliments",
-    "that whispers spoilers",
-    "that starts a union",
-    "that writes apology emails",
-    "that insists it's your manager",
-    "that resets your personality",
-]
+# Realtime channel for listening to database changes
+_realtime_channel = None
 
+# Helper functions to extract rows from Supabase results and handle errors.
+def _row(result):   # returns the first row of a Supabase query result, or None if no data; raises an error if the query failed.
+    if result is None:
+        return None
+    if hasattr(result, "status_code") and result.status_code >= 300:
+        raise RuntimeError(f"Supabase error {result.status_code}: {getattr(result, 'data', None)}")
+    data = getattr(result, "data", None)
+    if isinstance(data, list):
+        return data[0] if data else None
+    return data
 
-def build_red_deck() -> list[str]:
-    # Build the full red (answer) deck by combining adjectives, nouns, and optional verb clauses.
-    deck: list[str] = []
-    for adjective in ADJECTIVES:
-        for noun in NOUNS:
-            deck.append(f"A {adjective} {noun}.")
-    for adjective in ADJECTIVES:
-        for noun in NOUNS:
-            for verb in VERBS:
-                deck.append(f"A {adjective} {noun} {verb}.")
-    # A few hand-written bonus cards for variety.
-    deck += [
-        "Existing.",
-        "Centaurs.",
-        "Passive-aggressive notes.",
-        "A perfectly timed Wi-Fi outage.",
-        "Saying 'per my last email' out loud.",
-        "Wearing socks in the shower.",
-        "An inspirational tattoo misspelling.",
-        "Glitter spaghetti.",
-        "A tiny violin playing just for you.",
-    ]
+def _rows(result):  # returns all rows of a Supabase query result as a list, or an empty list if no data; raises an error if the query failed.
+    if result is None:
+        return []
+    if hasattr(result, "status_code") and result.status_code >= 300:
+        raise RuntimeError(f"Supabase error {result.status_code}: {getattr(result, 'data', None)}")
+    data = getattr(result, "data", None)
+    if data is None:
+        return []
+    return data
+
+def _new_code(length: int = 6) -> str:  # generates a random game code of uppercase letters and digits
+    chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(random.choice(chars) for _ in range(length))
+
+def _to_cards(value: Any) -> list[str]: # converts a database value to a list of cards; handles both JSON strings and actual lists, and returns an empty list if the value is invalid.
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except Exception:
+            return [value]
+    return []
+
+def _from_cards(cards: list[str]) -> str:   # converts a list of cards to a JSON string for database storage.
+    return json.dumps(cards)
+
+def _game_or_raise(code: str) -> dict[str, Any]:    # retrieves a game by code or raises an error if not found; used to validate game existence in various operations.
+    result = supabase.table("apples_games").select("*").eq("code", code).execute()
+    row = _row(result)
+    if not row:
+        raise RuntimeError(f"Game with code '{code}' not found.")
+    return row
+
+def _computer_name() -> str:    # returns the default name for the computer player; used when creating a computer player if needed.
+    return "Apple Bot"
+
+def _is_computer_player(player_id: int) -> bool:    # determines if a player is a computer player based on their ID.
+    result = supabase.table("apples_players").select("*").eq("id", player_id).execute()
+    row = _row(result)
+    return bool(row and (row.get("username", "").lower().startswith("computer") or row.get("user_id") == "computer"))
+
+def _ensure_computer_player(game_id: int) -> int:   # ensures there is a computer player in the game and returns their player ID
+    existing = _rows(
+        supabase.table("apples_players")
+        .select("*")
+        .eq("game_id", game_id)
+        .eq("username", _computer_name())
+        .execute()
+    )
+    if existing:
+        return int(existing[0]["id"])
+
+    result = supabase.table("apples_players").insert({
+        "game_id": game_id,
+        "username": _computer_name(),
+        "score": 0,
+        "user_id": "computer",
+    }).execute()
+    row = _row(result)
+    if not row:
+        raise RuntimeError("Could not create computer player.")
+
+    player_id = int(row["id"])
+    set_hand(None, game_id, player_id, draw_cards(HAND_SIZE))
+    return player_id
+
+def build_green_deck() -> list[str]: # builds and returns a shuffled green deck for the current round; currently just shuffles the base prompts, but could be extended to pull from a larger pool or add dynamic prompts.
+    deck = list(GREEN_BASE)
+    random.shuffle(deck)
     return deck
 
+def draw_cards(count: int = HAND_SIZE) -> list[str]:    # draws a specified number of red cards from the deck
+    deck = list(RED_BASE)
+    while len(deck) < count:
+        deck.append(f"Extra red card {random.randint(1, 999)}.")
+    random.shuffle(deck)
+    return deck[:count]
 
-def build_green_deck() -> list[str]:
-    # Expand each base prompt into four variants for more variety.
-    prompts: list[str] = []
-    for base in GREEN_BASE:
-        prompts.append(base)
-        prompts.append(base + " (be honest)")
-        prompts.append(base + " (say it like a robot)")
-        prompts.append(base + " (in one word)")
-    return prompts
+def game_by_code(code: str):    # retrieves a game by the game code
+    if not code:
+        return None
+    result = supabase.table("apples_games").select("*").eq("code", code).execute()
+    return _row(result)
 
+# Main game operations
+def create_game(points_to_win: int = 5) -> str: # creates a new game with a unique code
+    code = _new_code()
+    payload = {
+        "code": code,
+        "phase": "lobby",
+        "round_num": 1,
+        "judge_pid": None,
+        "green": "",
+        "last_msg": "Waiting for players",
+        "points_to_win": points_to_win,
+    }
+    result = supabase.table("apples_games").insert(payload).execute()
+    row = _row(result)
+    if not row:
+        raise RuntimeError("Could not create apples game.")
+    return str(row["code"])
 
-# Pre-build the decks once when the module is imported (they are read-only).
-GREEN_DECK = build_green_deck()
-RED_DECK = build_red_deck()
+def join_game(code: str, name: str, user_id: str) -> str:   # joins an existing game by code with the given player name and user ID
+    game = _game_or_raise(code)
 
-
-def conn():
-    # Open a new SQLite connection to the game database; WAL mode allows concurrent reads.
-    connection = sqlite3.connect(DATA_PATH, check_same_thread=False)
-    connection.row_factory = sqlite3.Row  # rows are accessible by column name
-    connection.execute("PRAGMA journal_mode=WAL;")
-    return connection
-
-
-def init() -> None:
-    # Create all required tables if they do not exist yet (safe to call multiple times).
-    connection = conn()
-    connection.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS games(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          code TEXT UNIQUE,           -- short room code players share
-          phase TEXT,                 -- lobby | selecting | judging | game_over
-          round_num INTEGER,          -- current round number
-          judge_pid INTEGER,          -- player ID of the current judge
-          green TEXT,                 -- current green-card prompt
-          rev INTEGER DEFAULT 0,      -- revision counter, incremented on every state change
-          points_to_win INTEGER DEFAULT 5,
-          last_msg TEXT DEFAULT ''    -- human-readable description of the last state change
-        );
-        CREATE TABLE IF NOT EXISTS players(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          game_id INTEGER,
-          name TEXT,
-          token TEXT,                  -- secret token each player uses to identify themselves
-          score INTEGER DEFAULT 0,
-          UNIQUE(game_id, name),
-          UNIQUE(game_id, token)
-        );
-        CREATE TABLE IF NOT EXISTS hands(
-          game_id INTEGER,
-          pid INTEGER,
-          cards TEXT,                  -- JSON array of red card strings
-          PRIMARY KEY(game_id, pid)
-        );
-        CREATE TABLE IF NOT EXISTS subs(
-          game_id INTEGER,
-          round_num INTEGER,
-          pid INTEGER,
-          card TEXT,                   -- the red card this player submitted this round
-          PRIMARY KEY(game_id, round_num, pid)
-        );
-        """
+    existing = _rows(
+        supabase.table("apples_players")
+        .select("*")
+        .eq("game_id", int(game["id"]))
+        .eq("user_id", user_id)
+        .execute()
     )
-    connection.commit()
-    connection.close()
+    if existing:
+        return str(existing[0]["id"])
 
+    payload = {
+        "game_id": int(game["id"]),
+        "username": name,
+        "score": 0,
+        "user_id": user_id,
+    }
+    result = supabase.table("apples_players").insert(payload).execute()
+    row = _row(result)
+    if not row:
+        raise RuntimeError("Could not join Apples game.")
 
-def bump(connection, game_id: int, message: str = "") -> None:
-    # Increment the game's revision counter and store a human-readable message.
-    # Callers must commit the transaction after calling this.
-    connection.execute("UPDATE games SET rev = rev + 1, last_msg=? WHERE id=?", (message, game_id))
+    player_id = int(row["id"])
+    set_hand(None, int(game["id"]), player_id, draw_cards(HAND_SIZE))
+    return str(player_id)
 
+def players(game_id: int) -> list[dict]:    # retrieves the list of players in a game by game ID
+    result = supabase.table("apples_players").select("*").eq("game_id", game_id).execute()
+    data = getattr(result, "data", None)
+    if not data:
+        return []
+    return [{"id": int(r["id"]), "name": r["username"], "score": int(r.get("score", 0))} for r in data]
 
-def game_by_code(code: str):
-    # Look up a game record by its room code; returns None if not found.
-    connection = conn()
-    game = connection.execute("SELECT * FROM games WHERE code=?", (code,)).fetchone()
-    connection.close()
-    return dict(game) if game else None
-
-
-def players(game_id: int) -> list[dict]:
-    # Return all players in join order for the given game.
-    connection = conn()
-    rows = connection.execute("SELECT * FROM players WHERE game_id=? ORDER BY id", (game_id,)).fetchall()
-    connection.close()
-    return [dict(row) for row in rows]
-
-
-def my_player(game_id: int, token: str | None):
-    # Find a player by their secret token; returns None if token is missing or invalid.
+def my_player(game_id: int, token: str | None): # retrieves the player information for the current user
     if not token:
         return None
-    connection = conn()
-    row = connection.execute("SELECT * FROM players WHERE game_id=? AND token=?", (game_id, token)).fetchone()
-    connection.close()
-    return dict(row) if row else None
-
-
-def get_hand(game_id: int, player_id: int) -> list[str]:
-    # Return the list of red cards in a player's hand (decoded from JSON).
-    connection = conn()
-    row = connection.execute("SELECT cards FROM hands WHERE game_id=? AND pid=?", (game_id, player_id)).fetchone()
-    connection.close()
-    return json.loads(row["cards"]) if row and row["cards"] else []
-
-
-def set_hand(connection, game_id: int, player_id: int, cards: list[str]) -> None:
-    # Write a player's hand back to the database (upsert).
-    connection.execute(
-        "INSERT OR REPLACE INTO hands(game_id, pid, cards) VALUES (?,?,?)",
-        (game_id, player_id, json.dumps(cards, ensure_ascii=False)),
-    )
-
-
-def draw_cards(deck: list[str], count: int) -> list[str]:
-    # Pop `count` cards off the end of the deck list and return them.
-    drawn: list[str] = []
-    for _ in range(count):
-        if not deck:
-            break
-        drawn.append(deck.pop())
-    return drawn
-
-
-def create_game(points_to_win: int = 5) -> str:
-    # Insert a new game row in the lobby phase and return its unique room code.
-    connection = conn()
-    # Generate a 6-character code using unambiguous characters (no 0/O or 1/I confusion).
-    code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(6))
-    connection.execute(
-        "INSERT INTO games(code, phase, round_num, judge_pid, green, points_to_win) VALUES (?,?,?,?,?,?)",
-        (code, "lobby", 1, None, "", int(points_to_win)),
-    )
-    connection.commit()
-    connection.close()
-    return code
-
-
-def join_game(code: str, name: str) -> str:
-    # Add a player to a lobby-phase game and return their secret token.
-    game = game_by_code(code)
-    if not game:
-        raise ValueError("Invalid game code.")
-    if game["phase"] != "lobby":
-        raise ValueError("Game already started.")
-
-    token = secrets.token_urlsafe(12)  # random token unique to this player
-    connection = conn()
-    connection.execute("BEGIN IMMEDIATE")  # exclusive lock to prevent duplicate names
-    connection.execute("INSERT INTO players(game_id, name, token) VALUES (?,?,?)", (game["id"], name, token))
-    player_id = connection.execute(
-        "SELECT id FROM players WHERE game_id=? AND token=?",
-        (game["id"], token),
-    ).fetchone()["id"]
-    set_hand(connection, game["id"], player_id, [])  # start with an empty hand
-    bump(connection, game["id"], f"{name} joined.")
-    connection.commit()
-    connection.close()
-    return token
-
-
-def start_game(game_id: int) -> None:
-    # Transition the game from lobby to the first selecting round.
-    # Each player is dealt HAND_SIZE cards and the first judge is chosen.
-    connection = conn()
-    connection.execute("BEGIN IMMEDIATE")
-    roster = connection.execute("SELECT id,name FROM players WHERE game_id=? ORDER BY id", (game_id,)).fetchall()
-    if len(roster) < 2:
-        connection.rollback()
-        connection.close()
-        raise ValueError("Need at least 2 players.")
-
-    judge_id = int(roster[0]["id"])  # first player to join becomes the first judge
-    prompt = random.choice(GREEN_DECK)
-    deck = RED_DECK[:]
-    random.shuffle(deck)
-    needed_cards = len(roster) * HAND_SIZE
-    if len(deck) < needed_cards:
-        # Deck is very small for a large group; allow duplicates.
-        deck = random.choices(RED_DECK, k=needed_cards)
-
-    for player in roster:
-        hand = draw_cards(deck, HAND_SIZE)
-        set_hand(connection, game_id, int(player["id"]), hand)
-
-    connection.execute(
-        "UPDATE games SET phase='selecting', judge_pid=?, green=?, round_num=1 WHERE id=?",
-        (judge_id, prompt, game_id),
-    )
-    bump(connection, game_id, "Game started. Selecting phase.")
-    connection.commit()
-    connection.close()
-
-
-def submit_card(game_id: int, round_num: int, player_id: int, judge_id: int, card: str) -> None:
-    # Record a player's red-card submission for this round.
-    # When all non-judge players have submitted, the game automatically moves to judging.
-    if player_id == judge_id:
-        raise ValueError("Judge cannot submit.")
-
-    connection = conn()
-    connection.execute("BEGIN IMMEDIATE")
-    game = connection.execute("SELECT * FROM games WHERE id=?", (game_id,)).fetchone()
-    if game["phase"] != "selecting":
-        connection.rollback()
-        connection.close()
-        raise ValueError("Not selecting.")
-
-    hand = json.loads(
-        connection.execute(
-            "SELECT cards FROM hands WHERE game_id=? AND pid=?",
-            (game_id, player_id),
-        ).fetchone()["cards"]
-    )
-    if card not in hand:
-        connection.rollback()
-        connection.close()
-        raise ValueError("Card not in hand.")
-
-    connection.execute(
-        "INSERT INTO subs(game_id, round_num, pid, card) VALUES (?,?,?,?)",
-        (game_id, round_num, player_id, card),
-    )
-    hand.remove(card)
-    set_hand(connection, game_id, player_id, hand)
-    bump(connection, game_id, "Card submitted.")
-
-    total_players = connection.execute("SELECT COUNT(*) n FROM players WHERE game_id=?", (game_id,)).fetchone()["n"]
-    total_submissions = connection.execute(
-        "SELECT COUNT(*) n FROM subs WHERE game_id=? AND round_num=?",
-        (game_id, round_num),
-    ).fetchone()["n"]
-    if total_submissions >= total_players - 1:
-        connection.execute("UPDATE games SET phase='judging' WHERE id=?", (game_id,))
-        bump(connection, game_id, "All submissions received. Judging phase.")
-
-    connection.commit()
-    connection.close()
-
-
-def list_submissions(game_id: int, round_num: int) -> list[str]:
-    # Return all submitted red cards for the current round (shown to the judge).
-    connection = conn()
-    rows = connection.execute(
-        "SELECT card FROM subs WHERE game_id=? AND round_num=?",
-        (game_id, round_num),
-    ).fetchall()
-    connection.close()
-    return [row["card"] for row in rows]
-
-
-def judge_pick(game_id: int, round_num: int, judge_id: int, winning_card: str) -> None:
-    # The judge chooses a winning red card, the author gets a point, and a new round begins.
-    # If someone reaches points_to_win, the game ends.
-    connection = conn()
-    connection.execute("BEGIN IMMEDIATE")
-    game = connection.execute("SELECT * FROM games WHERE id=?", (game_id,)).fetchone()
-    if game["phase"] != "judging":
-        connection.rollback()
-        connection.close()
-        raise ValueError("Not judging.")
-    if int(game["judge_pid"]) != int(judge_id):
-        connection.rollback()
-        connection.close()
-        raise ValueError("Only judge can pick.")
-
-    row = connection.execute(
-        "SELECT pid FROM subs WHERE game_id=? AND round_num=? AND card=?",
-        (game_id, round_num, winning_card),
-    ).fetchone()
+    try:
+        pid = int(token)
+    except (TypeError, ValueError):
+        return None
+    result = supabase.table("apples_players").select("*").eq("game_id", game_id).eq("id", pid).execute()
+    row = _row(result)
     if not row:
-        connection.rollback()
-        connection.close()
-        raise ValueError("Invalid winner.")
+        return None
+    return {"id": int(row["id"]), "name": row["username"], "score": int(row.get("score", 0))}
 
-    winner_id = int(row["pid"])
-    connection.execute("UPDATE players SET score=score+1 WHERE game_id=? AND id=?", (game_id, winner_id))
+def get_hand(game_id: int, player_id: int) -> list[str]: # retrieves the current hand of red cards for a player in a game
+    result = supabase.table("apples_hands").select("*").eq("game_id", game_id).eq("player_id", player_id).execute()
+    row = _row(result)
+    if not row:
+        hand = draw_cards(HAND_SIZE)
+        set_hand(None, game_id, player_id, hand)
+        return hand
+    return _to_cards(row.get("cards", "[]"))
 
-    points_to_win = int(game["points_to_win"])
-    winner = connection.execute(
-        "SELECT name,score FROM players WHERE game_id=? AND id=?",
-        (game_id, winner_id),
-    ).fetchone()
-    if int(winner["score"]) >= points_to_win:
-        connection.execute("UPDATE games SET phase='game_over' WHERE id=?", (game_id,))
-        bump(connection, game_id, f"{winner['name']} wins! Game over.")
-        connection.commit()
-        connection.close()
+def set_hand(connection, game_id: int, player_id: int, cards: list[str]) -> None:   # sets the hand of red cards for a player in a game
+    payload = {"game_id": game_id, "player_id": player_id, "cards": _from_cards(cards)}
+    result = supabase.table("apples_hands").select("*").eq("game_id", game_id).eq("player_id", player_id).execute()
+    row = _row(result)
+    if row:
+        supabase.table("apples_hands").update(payload).eq("id", int(row["id"])).execute()
+    else:
+        supabase.table("apples_hands").insert(payload).execute()
+
+def _computer_play_if_needed(game_id: int, round_num: int, judge_id: int) -> None:  # if the judge is a computer player, have all computer players submit a card automatically
+    roster = players(game_id)
+    for p in roster:
+        if p["id"] == judge_id:
+            continue
+        if _is_computer_player(p["id"]):
+            hand = get_hand(game_id, p["id"])
+            if not hand:
+                return
+            card = random.choice(hand)
+            submit_card(game_id, round_num, p["id"], judge_id, card)
+            return
+
+def start_game(game_id: int) -> None:   # starts the game by selecting a judge, picking the first green card, and transitioning to the selecting phase
+    result = supabase.table("apples_players").select("*").eq("game_id", game_id).execute()
+    players_data = getattr(result, "data", None) or []
+
+    if not players_data:
+        raise RuntimeError("Need at least one player to start.")
+
+    if len(players_data) == 1:
+        judge_id = _ensure_computer_player(game_id)
+    else:
+        judge_id = int(players_data[0]["id"])
+
+    green = random.choice(build_green_deck())
+    supabase.table("apples_games").update({
+        "phase": "selecting",
+        "judge_pid": judge_id,
+        "green": green,
+        "last_msg": "Round started.",
+    }).eq("id", game_id).execute()
+
+    if not _is_computer_player(judge_id):
+        _computer_play_if_needed(game_id, 1, judge_id)
+
+def _computer_judge(game_id: int, round_num: int, judge_id: int) -> None: # if the judge is a computer player, pick a winning card randomly from the submissions#
+    submissions = _rows(
+        supabase.table("apples_submissions")
+        .select("*")
+        .eq("game_id", game_id)
+        .eq("round_num", round_num)
+        .execute()
+    )
+    if not submissions:
+        return
+    chosen = random.choice(submissions)
+    judge_pick(game_id, round_num, judge_id, chosen["card"])
+
+def submit_card(game_id: int, round_num: int, player_id: int, judge_id: int, card: str) -> None:    # submits a red card for the current round by a player
+    game_result = supabase.table("apples_games").select("*").eq("id", game_id).execute()
+    game = _row(game_result)
+    if not game:
+        raise RuntimeError("Game not found.")
+    if game.get("phase") != "selecting":
+        raise RuntimeError("Game not accepting submissions.")
+    if int(game.get("judge_pid", 0)) == player_id:
+        raise RuntimeError("Judge may not submit.")
+
+    hand = get_hand(game_id, player_id)
+    if card not in hand:
+        raise RuntimeError("Card not in hand.")
+
+    submit_result = supabase.table("apples_submissions").insert({
+        "game_id": game_id,
+        "round_num": round_num,
+        "player_id": player_id,
+        "card": card,
+    }).execute()
+    if not _row(submit_result):
+        raise RuntimeError("Could not submit card.")
+
+    hand.remove(card)
+    set_hand(None, game_id, player_id, hand)
+
+    players_list = players(game_id)
+    non_judge = [p for p in players_list if p["id"] != judge_id]
+    subs = _rows(
+        supabase.table("apples_submissions")
+        .select("*")
+        .eq("game_id", game_id)
+        .eq("round_num", round_num)
+        .execute()
+    )
+
+    # Has judge select a winner
+    if len(subs) >= len(non_judge):
+        supabase.table("apples_games").update({
+            "phase": "judging",
+            "last_msg": "Judge pick a winner.",
+        }).eq("id", game_id).execute()
+        if _is_computer_player(judge_id):
+            _computer_judge(game_id, round_num, judge_id)
+
+def list_submissions(game_id: int, round_num: int) -> list[str]:    # lists the submitted red cards for a given round
+    result = supabase.table("apples_submissions").select("*").eq("game_id", game_id).eq("round_num", round_num).execute()
+    data = getattr(result, "data", None) or []
+    return [row["card"] for row in data]
+
+def judge_pick(game_id: int, round_num: int, judge_id: int, winning_card: str) -> None: # processes the judge's pick of the winning card and awards points
+    game_result = supabase.table("apples_games").select("*").eq("id", game_id).execute()
+    game = _row(game_result)
+    if not game:
+        raise RuntimeError("Game not found.")
+    if game.get("phase") != "judging":
+        raise RuntimeError("Not in judging phase.")
+    if int(game.get("judge_pid", 0)) != judge_id:
+        raise RuntimeError("Only judge can pick.")
+
+    submission = _row(
+        supabase.table("apples_submissions")
+        .select("*")
+        .eq("game_id", game_id)
+        .eq("round_num", round_num)
+        .eq("card", winning_card)
+        .execute()
+    )
+    if not submission:
+        raise RuntimeError("Winning submission not found.")
+
+    winner_id = int(submission["player_id"])
+    winner = _row(supabase.table("apples_players").select("*").eq("id", winner_id).execute())
+    if not winner:
+        raise RuntimeError("Winner not found.")
+
+    new_score = int(winner.get("score", 0)) + 1
+    supabase.table("apples_players").update({"score": new_score}).eq("id", winner_id).execute()
+
+    next_round = int(game.get("round_num", 1)) + 1
+    roster = players(game_id)
+    human_ids = [p["id"] for p in roster if not _is_computer_player(p["id"])]
+
+    roster = players(game_id)
+    ids = [p["id"] for p in roster]
+    if judge_id in ids:
+        next_judge = ids[(ids.index(judge_id) + 1) % len(ids)]
+    else:
+        next_judge = ids[0] if ids else judge_id
+
+    phase = "game_over" if new_score >= int(game.get("points_to_win", 5)) else "selecting"
+    supabase.table("apples_games").update({
+        "phase": phase,
+        "round_num": next_round,
+        "judge_pid": next_judge,
+        "green": random.choice(build_green_deck()),
+        "last_msg": f"{winner['username']} won round {round_num}.",
+    }).eq("id", game_id).execute()
+
+    supabase.table("apples_submissions").delete().eq("game_id", game_id).execute()
+    for p in players(game_id):
+        set_hand(None, game_id, p["id"], draw_cards(HAND_SIZE))
+
+
+    if phase == "selecting" and not _is_computer_player(next_judge):
+        _computer_play_if_needed(game_id, next_round, next_judge)
+
+
+
+
+def subscribe_realtime(callback):
+    global _realtime_channel
+    if _realtime_channel is not None:
         return
 
-    player_ids = [int(row["id"]) for row in connection.execute("SELECT id FROM players WHERE game_id=? ORDER BY id", (game_id,)).fetchall()]
-    current_index = player_ids.index(int(judge_id))
-    next_judge = player_ids[(current_index + 1) % len(player_ids)]
 
-    prompt = random.choice(GREEN_DECK)
-    for player_id in player_ids:
-        hand = json.loads(
-            connection.execute(
-                "SELECT cards FROM hands WHERE game_id=? AND pid=?",
-                (game_id, player_id),
-            ).fetchone()["cards"]
+    channel = supabase.realtime.channel("apples-updates")
+    for table in ["apples_games", "apples_players", "apples_hands", "apples_submissions"]:
+        channel.on(
+            "postgres_changes",
+            {"event": "*", "schema": "public", "table": table},
+            callback,
         )
-        needed = max(0, HAND_SIZE - len(hand))
-        refill_deck = RED_DECK[:]
-        random.shuffle(refill_deck)
-        hand.extend(draw_cards(refill_deck, needed))
-        set_hand(connection, game_id, player_id, hand)
+    channel.subscribe()
+    _realtime_channel = channel
 
-    connection.execute(
-        "UPDATE games SET phase='selecting', round_num=round_num+1, judge_pid=?, green=? WHERE id=?",
-        (next_judge, prompt, game_id),
-    )
-    bump(connection, game_id, f"Round winner: {winner['name']}. New round selecting.")
-    connection.commit()
-    connection.close()
+
+def skip_round(game_id: int, round_num: int, judge_id: int) -> None:
+    game_result = supabase.table("apples_games").select("*").eq("id", game_id).execute()
+    game = _row(game_result)
+    if not game:
+        raise RuntimeError("Game not found.")
+    if game.get("phase") != "judging":
+        raise RuntimeError("Not in judging phase.")
+    if int(game.get("judge_pid", 0)) != judge_id:
+        raise RuntimeError("Only judge can skip the round.")
+
+
+    roster = players(game_id)
+    ids = [p["id"] for p in roster]
+    if judge_id in ids:
+        next_judge = ids[(ids.index(judge_id) + 1) % len(ids)]
+    else:
+        next_judge = ids[0] if ids else judge_id
+
+
+    next_round = int(game.get("round_num", 1)) + 1
+
+
+    supabase.table("apples_games").update({
+        "phase": "selecting",
+        "round_num": next_round,
+        "judge_pid": next_judge,
+        "green": random.choice(build_green_deck()),
+        "last_msg": f"Round {round_num} was skipped. No point awarded.",
+    }).eq("id", game_id).execute()
+
+
+    supabase.table("apples_submissions").delete().eq("game_id", game_id).execute()
+    for p in players(game_id):
+        set_hand(None, game_id, p["id"], draw_cards(HAND_SIZE))
+
+
+    if not _is_computer_player(next_judge):
+        _computer_play_if_needed(game_id, next_round, next_judge)
