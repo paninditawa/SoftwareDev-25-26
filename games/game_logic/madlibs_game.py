@@ -19,7 +19,8 @@ import threading
 import time
 from pathlib import Path
 
-# Ensure the project root containing `tts.py` is on sys.path.
+# Ensure the project root containing `tts.py`
+# tts.py is used for text-to-speech output
 _this_file = Path(__file__).resolve()
 for _parent in _this_file.parents:
     if (_parent / "tts.py").exists():
@@ -43,9 +44,7 @@ try:
 except ImportError:
     pass
 
-# =============================================
-# CONFIG
-# =============================================
+# Basic configuration
 WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
 BG_COLOR = (248, 250, 252)
@@ -101,12 +100,8 @@ def _chord(freqs: list[float], dur: float = 0.24, vol: float = 0.30):
     arr = (arr * vol * 32767).astype(np.int16)
     return pygame.sndarray.make_sound(np.column_stack([arr, arr]))
 
-# =============================================
-# TTS
-# =============================================
+# text-to-speech output is handled here
 last_spoken = ""
-
-
 def speak(text: str, interrupt: bool = False) -> None:
     global last_spoken
     last_spoken = text

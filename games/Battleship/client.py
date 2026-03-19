@@ -1,5 +1,5 @@
 """
-Battleship client using pygame. Connects to a server, handles ship placement, 
+Battleship client using pygame. Connects to a server, handles ship placement,
 completes actions based on turns, and displays game state.
 """
 
@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pygame
 
-# Find tts.py so it can be imported regardless of current working directory
+# walk up dirs to find tts.py regardless of cwd
 _repo_root = Path(__file__).resolve()
 while _repo_root != _repo_root.parent:
     if (_repo_root / "tts.py").exists():
@@ -32,11 +32,11 @@ last_spoken_text = ""
 
 def speak(text: str, interrupt: bool = False):
     """
-    Speaks the given text aloud using TTS.
+    Speaks text aloud via TTS.
 
-    Params: 
-    text (str) - text to speak, 
-    interrupt (bool) - whether to interrupt current speech
+    Params:
+    text (str) - text to speak,
+    interrupt (bool) - whether to cut off current speech
     """
     global last_spoken_text
     last_spoken_text = text
@@ -47,22 +47,22 @@ def speak(text: str, interrupt: bool = False):
 
 speak_interrupt = lambda text: speak(text, interrupt=True)
 
-# Network settings
+# network settings
 HOST = "127.0.0.1"
 PORT = 5555
 
-# Board and window dimensions
+# board + window dimensions
 BOARD_SIZE = 8
 WINDOW_WIDTH = 1000
 WINDOW_HEIGHT = 580
 CELL = min(WINDOW_WIDTH // (BOARD_SIZE * 2 + 2), WINDOW_HEIGHT // (BOARD_SIZE + 2))
 
-# Board offsets for your ships (left) and opponent ships (right)
+# pixel offsets for left (your ships) and right (opponent) grids
 LEFT_OFFSET_X = 40
 RIGHT_OFFSET_X = LEFT_OFFSET_X + BOARD_SIZE * CELL + 40
 BOARD_OFFSET_Y = 52
 
-# Ships to place in order, with their lengths
+# ships in placement order w/ lengths
 SHIP_ORDER = [
     ("Aircraft Carrier", 5),
     ("Battleship", 4),
@@ -71,7 +71,7 @@ SHIP_ORDER = [
     ("Destroyer", 2),
 ]
 
-# Color palette
+# color palette
 C_BG = (18, 29, 43)
 C_GRID = (125, 150, 179)
 C_SHIP = (120, 145, 171)
@@ -87,14 +87,14 @@ C_LABEL = (255, 232, 166)
 
 def _tone(freq: float, duration: float = 0.25, volume: float = 0.55) -> pygame.mixer.Sound:
     """
-    Generates a simple sine wave tone as a pygame Sound object.
+    Generates a sine wave tone as a pygame Sound object.
 
-    Params: 
-    freq (float) - frequency in Hz, 
+    Params:
+    freq (float) - frequency in Hz,
     duration (float) - length in seconds,
     volume (float) - amplitude scale
-    
-    Returns: 
+
+    Returns:
     pygame.mixer.Sound
     """
     sr = 44100
@@ -105,7 +105,7 @@ def _tone(freq: float, duration: float = 0.25, volume: float = 0.55) -> pygame.m
 
 
 def parse_args():
-    """Parses command-line arguments for host, port, user ID, username, and launcher PID."""
+    """Parses CLI args for host, port, user ID, username, and launcher PID."""
     p = argparse.ArgumentParser(description="Battleship client")
     p.add_argument("--host", default=HOST)
     p.add_argument("--port", type=int, default=PORT)
@@ -114,61 +114,13 @@ def parse_args():
     p.add_argument("--launcher-pid", type=int, default=0)
     return p.parse_args()
 
-args = parse_args()
-
-# Connect to server and receive assigned player ID
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.connect((args.host, args.port))
-welcome = sock.recv(1024).decode().strip()
-try:
-    player_id = int(welcome.split()[-1])
-except Exception:
-    player_id = 0
-
-speak(f"Connected as player {player_id + 1}. Arrow keys to adjust each ship, J to rotate, Enter to confirm.")
-
-# Game state variables
-# Valid phases: "placement" → "waiting" → "battle" → "game_over"
-phase = "placement"
-placed_count = 0   # how many ships have been confirmed by the server so far
-orientation = "H"  # current ship orientation for placement ("H" or "V")
-
-# own_ships: True where this player has a ship cell (for drawing the left grid)
-own_ships = [[False] * BOARD_SIZE for _ in range(BOARD_SIZE)]
-# hits_on_me: True/False for HIT/MISS on this player's grid (sent by server as OPPONENT_FIRE)
-hits_on_me = [[None] * BOARD_SIZE for _ in range(BOARD_SIZE)]
-# hits_on_opponent: "hit"/"miss" for shots fired at the opponent's grid
-hits_on_opponent = [[None] * BOARD_SIZE for _ in range(BOARD_SIZE)]
-
-selected_row = 0
-selected_col = 0
-
-# Pending placement data while waiting for server confirmation
-# These are set when a PLACE message is sent and cleared when PLACE_OK/PLACE_ERR arrives
-pending_row = None
-pending_col = None
-pending_orient = None
-pending_index = None  # ship index in SHIP_ORDER that is currently awaiting confirmation
-
-lock = threading.Lock()  # guards shared state accessed by both the main and listener threads
-my_turn = False           # True when it is this client's turn to fire
-ready = False             # True after sending READY and receiving READY_OK
-opponent_ready = False    # True after receiving OPPONENT_READY from server
-awaiting_place_response = False   # True while waiting for PLACE_OK/PLACE_ERR from server
-last_place_time = 0.0             # timestamp of the last PLACE send (used for timeout)
-server_connected = True
-server_error = ""
-game_over_message = ""
-i_won = False
-_place_ok_count = 0  # counts consecutive PLACE_OK responses; triggers READY once all ships confirmed
 
 def _make_random_layout() -> list[tuple[int, int, str]]:
     """
     Generates a random valid ship layout for the board.
 
-    Returns: 
-    list of (row, col, orientation) tuples, 
-    one per ship in SHIP_ORDER
+    Returns:
+    list of (row, col, orient) tuples, one per ship in SHIP_ORDER
     """
     import random
     board = [[False] * BOARD_SIZE for _ in range(BOARD_SIZE)]
@@ -195,15 +147,15 @@ def _make_random_layout() -> list[tuple[int, int, str]]:
 
 def _ship_coords(ship_index: int, row: int, col: int, orient: str) -> list[tuple[int, int]]:
     """
-    Returns the list of (row, col) cells a ship occupies.
+    Returns all (row, col) cells a ship occupies.
 
-    Params: 
-    ship_index (int), 
-    row (int), 
-    col (int), 
+    Params:
+    ship_index (int),
+    row (int),
+    col (int),
     orient (str) - 'H' or 'V'
 
-    Returns: 
+    Returns:
     list of (row, col) tuples
     """
     _, length = SHIP_ORDER[ship_index]
@@ -215,16 +167,15 @@ def _ship_coords(ship_index: int, row: int, col: int, orient: str) -> list[tuple
 
 def _placement_valid(ship_index: int, row: int, col: int, orient: str) -> bool:
     """
-    Checks whether a ship can be placed at the given position without going
-    out of bounds or overlapping already-confirmed ships.
+    Checks if a ship can be placed without going OOB or overlapping confirmed ships.
 
-    Returns: 
+    Returns:
     bool
     """
     coords = _ship_coords(ship_index, row, col, orient)
     if any(r < 0 or r >= BOARD_SIZE or c < 0 or c >= BOARD_SIZE for r, c in coords):
         return False
-    # Only check against already-confirmed ships, not the current one
+    # only check vs already-confirmed ships, not the current one
     confirmed: set[tuple[int, int]] = set()
     for i in range(placed_count):
         confirmed.update(_ship_coords(i, *_layout[i][:2], _layout[i][2]))
@@ -239,7 +190,7 @@ def _mark_confirmed(ship_index: int) -> None:
 
 
 def _sync_cursor_to_ship() -> None:
-    """Moves the cursor to the starting position of the next ship to be placed."""
+    """Moves cursor to the start pos of the next ship to place."""
     global selected_row, selected_col, orientation
     if placed_count < len(SHIP_ORDER):
         selected_row, selected_col, orientation = _layout[placed_count]
@@ -267,7 +218,7 @@ def report_win() -> None:
 
 
 def describe_status() -> str:
-    """Returns a status string describing the current game phase and available actions."""
+    """Returns a status string for the current phase + available actions."""
     if phase == "placement":
         if awaiting_place_response:
             return "Confirming placement…"
@@ -284,8 +235,7 @@ def describe_status() -> str:
 
 def listen_server() -> None:
     """
-    Runs in a background thread. Reads messages from the server and updates
-    game state accordingly.
+    Runs in a background thread. Reads server msgs and updates game state.
     """
     global my_turn, phase, ready, opponent_ready, placed_count
     global awaiting_place_response, pending_row, pending_col, pending_orient, pending_index
@@ -331,7 +281,7 @@ def listen_server() -> None:
                         opponent_ready = True
 
                     elif cmd == "RESET":
-                        # Reset all state for a new game
+                        # reset all state for a new game
                         phase = "placement"
                         placed_count = 0
                         orientation = "H"
@@ -401,7 +351,7 @@ def listen_server() -> None:
 
 def _fit_text(font, text: str, max_width: int) -> str:
     """
-    Trims text with "..." if it exceeds max_width pixels.
+    Trims text w/ '...' if it exceeds max_width pixels.
 
     Returns:
     str
@@ -416,10 +366,10 @@ def _fit_text(font, text: str, max_width: int) -> str:
 
 def draw_grid(offset_x: int, hits, show_ships: bool) -> None:
     """
-    Draws one of the two game grids, including ship tiles and hit/miss markers.
-    
-    Params: 
-    offset_x (int) - horizontal offset, 
+    Draws one game grid w/ ship tiles and hit/miss markers.
+
+    Params:
+    offset_x (int) - horizontal offset,
     hits - 2D list of hit data,
     show_ships (bool) - whether to reveal ship positions
     """
@@ -443,8 +393,8 @@ def draw_grid(offset_x: int, hits, show_ships: bool) -> None:
 
 def draw_placement_preview() -> None:
     """
-    Draws a transparent preview of the current ship being placed.
-    Shows green if valid position, red if invalid.
+    Draws a transparent preview of the ship being placed.
+    Green = valid pos, red = invalid.
     """
     if phase != "placement" or placed_count >= len(SHIP_ORDER):
         return
@@ -459,7 +409,7 @@ def draw_placement_preview() -> None:
 
 
 def draw_cursor() -> None:
-    """Draws the selection cursor on whichever grid is currently active."""
+    """Draws the selection cursor on whichever grid is active."""
     if phase == "placement":
         ox = LEFT_OFFSET_X
     elif phase in ("battle", "game_over"):
@@ -471,19 +421,19 @@ def draw_cursor() -> None:
 
 
 def draw_labels() -> None:
-    """Draws the title, column letters, and row numbers along both grids."""
-    # Draw "YOUR SHIPS" and "FIRE HERE" titles at the very top
+    """Draws titles, col letters, and row numbers on both grids."""
+    # grid titles at very top
     screen.blit(font_md.render("YOUR SHIPS", True, C_LABEL), (LEFT_OFFSET_X, 4))
     screen.blit(font_md.render("FIRE HERE", True, C_LABEL), (RIGHT_OFFSET_X, 4))
 
-    # Draw column letters (A-H) on the row just above the grid
+    # col letters (A-H) just above the grid
     for i in range(BOARD_SIZE):
         ch = chr(ord("A") + i)
         for ox in (LEFT_OFFSET_X, RIGHT_OFFSET_X):
             lbl = font_sm.render(ch, True, C_DIM)
             screen.blit(lbl, (ox + i * CELL + CELL // 2 - 5, BOARD_OFFSET_Y - 18))
 
-    # Draw row numbers (1-8) to the left of each grid
+    # row numbers (1-8) left of each grid
     for i in range(BOARD_SIZE):
         for ox in (LEFT_OFFSET_X - 28, RIGHT_OFFSET_X - 28):
             lbl = font_sm.render(str(i + 1), True, C_DIM)
@@ -491,7 +441,7 @@ def draw_labels() -> None:
 
 
 def draw_status() -> None:
-    """Draws the status bar at the bottom, including the last spoken TTS line and any errors."""
+    """Draws the status bar at the bottom w/ last TTS line and any errors."""
     y = BOARD_OFFSET_Y + BOARD_SIZE * CELL + 10
     max_w = WINDOW_WIDTH - 40
     line = _fit_text(font_md, describe_status(), max_w)
@@ -516,7 +466,7 @@ def main() -> None:
 
     args = parse_args()
 
-    # Connect to server and receive assigned player ID
+    # connect to server + get assigned player ID
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((args.host, args.port))
     welcome = sock.recv(1024).decode().strip()
@@ -527,7 +477,7 @@ def main() -> None:
 
     speak(f"Connected as player {player_id + 1}. Arrow keys to adjust each ship, J to rotate, Enter to confirm.")
 
-    # Game state variables
+    # game state
     phase = "placement"
     placed_count = 0
     orientation = "H"
@@ -537,13 +487,13 @@ def main() -> None:
     selected_row = 0
     selected_col = 0
 
-    # Pending placement data while waiting for server confirmation
+    # pending placement — set on PLACE send, cleared on PLACE_OK/ERR
     pending_row = None
     pending_col = None
     pending_orient = None
     pending_index = None
 
-    lock = threading.Lock()
+    lock = threading.Lock()  # guards shared state between main + listener threads
     my_turn = False
     ready = False
     opponent_ready = False
@@ -553,13 +503,13 @@ def main() -> None:
     server_error = ""
     game_over_message = ""
     i_won = False
-    _place_ok_count = 0
+    _place_ok_count = 0  # triggers READY once all ships confirmed
 
-    # Generate initial random layout; player can adjust ships before confirming
+    # initial random layout; player nudges before confirming
     _layout = _make_random_layout()
     _sync_cursor_to_ship()
 
-    # Initialize pygame, sounds, display, and fonts
+    # init pygame, sounds, display, fonts
     pygame.init()
     pygame.mixer.init(frequency=44100, size=-16, channels=2)
 
@@ -579,7 +529,7 @@ def main() -> None:
 
     threading.Thread(target=listen_server, daemon=True).start()
 
-    # Main game loop
+    # main game loop
     clock = pygame.time.Clock()
     running = True
 
@@ -594,7 +544,7 @@ def main() -> None:
         pygame.display.flip()
         clock.tick(60)
 
-        # Time out placement confirmation if server doesn't respond
+        # time out placement if server doesn't respond within 3s
         if awaiting_place_response and time.time() - last_place_time > 3:
             awaiting_place_response = False
 
@@ -607,7 +557,7 @@ def main() -> None:
 
             key = event.key
 
-            # Arrow key movement
+            # arrow key movement
             dr = dc = 0
             if key == pygame.K_UP: dr = -1
             elif key == pygame.K_DOWN: dr = 1
@@ -620,7 +570,7 @@ def main() -> None:
                     _, length = SHIP_ORDER[placed_count]
                     nr = max(0, min(BOARD_SIZE - 1, selected_row + dr))
                     nc = max(0, min(BOARD_SIZE - 1, selected_col + dc))
-                    # Clamp so the whole ship stays on the board
+                    # clamp so whole ship stays on board
                     if orientation == "H":
                         nc = min(nc, BOARD_SIZE - length)
                     else:
@@ -637,7 +587,7 @@ def main() -> None:
             if key == pygame.K_j:
                 if phase == "placement" and placed_count < len(SHIP_ORDER):
                     orientation = "V" if orientation == "H" else "H"
-                    # Clamp after rotation so ship stays on board
+                    # clamp after rotation so ship stays on board
                     _, length = SHIP_ORDER[placed_count]
                     if orientation == "H":
                         selected_col = min(selected_col, BOARD_SIZE - length)

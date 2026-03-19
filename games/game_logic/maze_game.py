@@ -45,7 +45,7 @@ import sys
 import numpy as np
 from pathlib import Path
 
-# Ensure the project root containing `tts.py` is on sys.path.
+# Ensure the project root containing `tts.py`
 _this_file = Path(__file__).resolve()
 for _parent in _this_file.parents:
     if (_parent / "tts.py").exists():
@@ -53,18 +53,19 @@ for _parent in _this_file.parents:
             sys.path.insert(0, str(_parent))
         break
 
-# Use TTS helper (cross-platform) for speech output
+# Use TTS helper for speech output
+# Error will be thrown if it is not available, though the game will still run
 try:
     from tts import speak as _tts_speak
 except ImportError:
     def _tts_speak(text: str):
-        # Fallback: print to stdout if tts helper is not available
+        # Display the error message if tts helper is not available
         print(text)
 
-# --- Audio constants ---
-SAMPLE_RATE = 44100  # samples per second used for tone synthesis
+# Audio constants
+SAMPLE_RATE = 44100  # sample_rate is samples per second used
 
-# --- Colors ---
+# Color configurations
 WHITE  = (255, 255, 255)
 BLACK  = (0,   0,   0)
 BLUE   = (14,  92, 168)
@@ -73,8 +74,8 @@ YELLOW = (255, 191,  71)
 GRAY   = (208, 218, 230)
 DARK   = (18,   24,  33)
 
+# Screen size configurations; adjustable
 SCREEN_W, SCREEN_H = 820, 720
-
 
 def _recommended_window_size(base_w: int, base_h: int) -> tuple[int, int]:
     screen_w = base_w
@@ -103,11 +104,9 @@ def _recommended_window_size(base_w: int, base_h: int) -> tuple[int, int]:
     height = max(base_h, min(screen_h - 60, int(screen_h * 0.94)))
     return width, height
 
-# ---------------------------------------------------------------------------
-# Speech engine — cross-platform wrapper around the `tts` helper.
-# ---------------------------------------------------------------------------
+# Speech engine — cross-platform wrapper around the `tts` helper
 class SpeechEngine:
-    # Runs TTS in a background thread so speech never blocks the game loop.
+    # Runs tts in a background thread so speech never blocks the game loop
     def __init__(self):
         self._q = queue.Queue()
         self._thread = threading.Thread(target=self._worker, daemon=True)
@@ -136,10 +135,7 @@ class SpeechEngine:
     def stop(self):
         self._q.put(None)
 
-# ---------------------------------------------------------------------------
-# Scoreboard
-# ---------------------------------------------------------------------------
-
+# Scoreboard logic
 def _report_win() -> None:
     import os
     user_id  = os.environ.get("HW_USER_ID",  "")
@@ -161,9 +157,7 @@ def _report_win() -> None:
             print(f"scoreboard write failed: {exc}")
     threading.Thread(target=_write, daemon=True).start()
 
-# ---------------------------------------------------------------------------
 # Sound generation — produces tones with numpy, no external audio files needed.
-# ---------------------------------------------------------------------------
 def _make_tone(freq, duration, volume=0.5, wave='sine', fade=True):
     frames = int(SAMPLE_RATE * duration)
     t = np.linspace(0, duration, frames, endpoint=False)
@@ -190,9 +184,7 @@ def _make_win_sound():
     stereo = np.column_stack([combined, combined])
     return pygame.sndarray.make_sound(stereo)
 
-# ---------------------------------------------------------------------------
-# Maze generation — recursive DFS (backtracker).
-# ---------------------------------------------------------------------------
+# Maze generation — recursive DFS (depth first search)
 def generate_maze(cols, rows):
     # Use recursive DFS to carve passages; the resulting set stores every open corridor.
     sys.setrecursionlimit(cols * rows * 4 + 500)
@@ -216,9 +208,7 @@ def can_move(passages, c, r, nc, nr):
     # Return True if there is an open passage between cell (c,r) and cell (nc,nr).
     return frozenset([(c, r), (nc, nr)]) in passages
 
-# ---------------------------------------------------------------------------
 # Size-selection screen
-# ---------------------------------------------------------------------------
 class SizeSelectScreen:
     def __init__(self, screen, speech):
         self.screen  = screen
@@ -305,9 +295,7 @@ class SizeSelectScreen:
 
         pygame.display.flip()
 
-# ---------------------------------------------------------------------------
 # Main game
-# ---------------------------------------------------------------------------
 class MazeGame:
     DIRS = [
         ("Top",    0, -1, pygame.K_UP),
@@ -342,7 +330,6 @@ class MazeGame:
         self.won      = False
         self.moves    = 0
 
-    # ------------------------------------------------------------------
     def _open_dirs(self, c=None, r=None):
         if c is None:
             c, r = self.player
@@ -354,7 +341,7 @@ class MazeGame:
         return result
 
     def _announce_position(self):
-        # Speak the current column, row, open directions, and Manhattan distance to the exit.
+        # Speak the current column, row, open directions, and distance away from the exit
         c, r   = self.player
         dirs   = self._open_dirs()
         opens  = [d for d, v in dirs.items() if v]
@@ -430,7 +417,6 @@ class MazeGame:
 
         return None
 
-    # ------------------------------------------------------------------
     def draw(self):
         self.screen.fill(DARK)
         screen_w = self.screen.get_width()
@@ -439,7 +425,7 @@ class MazeGame:
         ox = (SCREEN_W - self.cols * t) // 2
         oy = 40 + (SCREEN_H - 80 - self.rows * t) // 2
 
-        # --- Maze rendering: floor + explicit walls ---
+        # Maze rendering: floor + walls
         WALL_COLOR  = (232, 238, 245)
         FLOOR_COLOR = (38, 48, 64)
         WALL_W      = max(2, t // 6)
@@ -454,7 +440,7 @@ class MazeGame:
         pygame.draw.rect(self.screen, WALL_COLOR,
                          (ox, oy, self.cols * t, self.rows * t), WALL_W)
 
-        # Internal walls — draw only where no passage exists
+        # Internal walls: draw only where no passage exists
         for r in range(self.rows):
             for c in range(self.cols):
                 x, y = ox + c * t, oy + r * t
@@ -513,9 +499,7 @@ class MazeGame:
 
         pygame.display.flip()
 
-# ---------------------------------------------------------------------------
 # Entry point
-# ---------------------------------------------------------------------------
 def main():
     # Initialise pygame and the audio mixer, then run the state machine.
     pygame.init()
