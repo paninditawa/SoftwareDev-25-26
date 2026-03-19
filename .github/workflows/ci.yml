@@ -49,6 +49,19 @@ jobs:
         run: python -m pip install --upgrade pip
 
       # readable step name shown in Actions UI
+      - name: Install OS audio build deps
+        # PyAudio needs PortAudio headers/libs on Linux and macOS.
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            sudo apt-get update
+            sudo apt-get install -y portaudio19-dev python3-dev pkg-config
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            brew install portaudio
+          fi
+
+      # readable step name shown in Actions UI
       - name: Install dependencies
         # install required Python packages listed in requirements.txt
         run: python -m pip install -r requirements.txt

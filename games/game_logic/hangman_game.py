@@ -19,6 +19,9 @@ import random
 import time
 import queue
 import threading
+import math
+import re
+from array import array
 from pathlib import Path
 
 # Ensure repo root containing tts.py is on sys.path.
@@ -57,6 +60,7 @@ FOCUS_COLOR = (255, 191, 71)
 RADIUS = 24
 SPACE = 20
 WORDS = ["SOFTWARE", "DEVELOPMENT", "TECHNOLOGY", "STUDENT", "ASSOCIATION", "UNITY", "COMMUNITY"]
+SAMPLE_RATE = 22050
 
 
 def _recommended_window_size(base_w: int, base_h: int) -> tuple[int, int]:
@@ -85,6 +89,21 @@ def _recommended_window_size(base_w: int, base_h: int) -> tuple[int, int]:
     width = max(base_w, min(screen_w - 40, int(screen_w * 0.96)))
     height = max(base_h, min(screen_h - 60, int(screen_h * 0.94)))
     return width, height
+
+
+def _make_tone(frequency: int, duration: float, volume: float = 0.25) -> pygame.mixer.Sound | None:
+    try:
+        if not pygame.mixer.get_init():
+            pygame.mixer.init(frequency=SAMPLE_RATE, size=-16, channels=1, buffer=512)
+        sample_count = max(1, int(SAMPLE_RATE * duration))
+        samples = array("h")
+        amplitude = int(32767 * max(0.0, min(volume, 1.0)))
+        for index in range(sample_count):
+            frame = int(amplitude * math.sin(2 * math.pi * frequency * index / SAMPLE_RATE))
+            samples.append(frame)
+        return pygame.mixer.Sound(buffer=samples.tobytes())
+    except Exception:
+        return None
 
 last_spoken = ""
 
@@ -125,7 +144,11 @@ def _report_win() -> None:
 
 
 def _extract_letter(text: str) -> str | None:
-    text = text.upper().strip()
+    text = re.sub(r"[^A-Z\s'-]", " ", text.upper())
+    text = text.replace("-", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return None
 
     spoken_names = {
         "AY": "A", "BEE": "B", "BE": "B", "SEE": "C", "CEE": "C", "SEA": "C", "DEE": "D",
@@ -135,6 +158,13 @@ def _extract_letter(text: str) -> str | None:
         "ESS": "S", "TEE": "T", "TEA": "T", "YOU": "U", "VEE": "V",
         "WEE": "W", "DOUBLE YOU": "W", "DOUBLE-YOU": "W",
         "EKS": "X", "EX": "X", "WHY": "Y", "ZED": "Z", "ZEE": "Z",
+        # NATO words help when recognition returns phonetic alphabet terms.
+        "ALFA": "A", "ALPHA": "A", "BRAVO": "B", "CHARLIE": "C", "DELTA": "D",
+        "ECHO": "E", "FOXTROT": "F", "GOLF": "G", "HOTEL": "H", "INDIA": "I",
+        "JULIETT": "J", "JULIET": "J", "KILO": "K", "LIMA": "L", "MIKE": "M",
+        "NOVEMBER": "N", "OSCAR": "O", "PAPA": "P", "ROMEO": "R", "SIERRA": "S",
+        "TANGO": "T", "UNIFORM": "U", "VICTOR": "V", "WHISKEY": "W", "XRAY": "X", "X RAY": "X",
+        "YANKEE": "Y", "ZULU": "Z",
     }
 
     for prefix in [
@@ -144,14 +174,28 @@ def _extract_letter(text: str) -> str | None:
         if text.startswith(prefix):
             text = text[len(prefix):].strip()
 
+    if not text:
+        return None
+
+    if text in spoken_names:
+        return spoken_names[text]
+
     if len(text) == 1 and text.isalpha():
         return text
 
-    for name, letter in spoken_names.items():
-        if text == name:
-            return letter
-
     words = text.split()
+
+    # Look for two-word names like "DOUBLE YOU" anywhere in the phrase.
+    for i in range(len(words) - 1):
+        pair = f"{words[i]} {words[i + 1]}"
+        if pair in spoken_names:
+            return spoken_names[pair]
+
+    # Then check single-word spoken names like "BEE" or "BRAVO".
+    for word in words:
+        if word in spoken_names:
+            return spoken_names[word]
+
     letter_words = [w for w in words if len(w) == 1 and w.isalpha()]
     if len(letter_words) == 1:
         return letter_words[0]
@@ -177,6 +221,7 @@ class VoiceListener:
         self.result_queue: queue.Queue[str] = queue.Queue()
         self._recognizer = None
         self._mic = None
+        self.unavailable_reason = "SpeechRecognition is not installed."
 
         if _sr_available:
             self._recognizer = sr.Recognizer()
@@ -192,8 +237,10 @@ class VoiceListener:
                 )
                 self._recognizer.dynamic_energy_threshold = False
                 self._recognizer.pause_threshold = 0.9
-            except Exception:
+                self.unavailable_reason = ""
+            except Exception as exc:
                 self._mic = None
+                self.unavailable_reason = f"Microphone setup failed: {exc}"
 
     @property
     def available(self) -> bool:
@@ -245,6 +292,7 @@ class HangmanGame:
         self.word_font = pygame.font.SysFont("segoeui", 40, bold=False)
         self.title_font = pygame.font.SysFont("segoeui", 66, bold=False)
         self.small_font = pygame.font.SysFont("segoeui", 24, bold=False)
+        self.snd_listen = _make_tone(880, 0.06, 0.25)
 
         self.voice = VoiceListener()
         self.listening = False
@@ -268,9 +316,10 @@ class HangmanGame:
             )
         else:
             self.status_text = "Voice input unavailable"
-            self.detail_text = "Keyboard mode: left/right move, enter guess, up/down status"
+            self.detail_text = self.voice.unavailable_reason or "Keyboard mode: left/right move, enter guess, up/down status"
             speak(
                 "Voice input is unavailable. Keyboard mode is active. "
+                "Install SpeechRecognition and PyAudio, or check microphone permissions and the default input device. "
                 "Use left and right arrows and enter to guess letters. Press up or down for status."
             )
 
@@ -560,6 +609,8 @@ class HangmanGame:
                     if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE and not self.listening:
                         self.listening = True
                         self.status_text = "Listening..."
+                        if self.snd_listen is not None:
+                            self.snd_listen.play()
                         self.voice.listen_once()
                 else:
                     if event.type == pygame.KEYDOWN and self.state == "playing" and event.key == pygame.K_SPACE:

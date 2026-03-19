@@ -72,7 +72,7 @@ def _script_page(title: str, description: str, path: Path) -> dict[str, object]:
     return {
         "title": title,
         "description": description,
-        "hint": f"{title}. Press the Right Arrow key to play {title}.",
+        "hint": f"Press the Right Arrow key to play {title}.",
         "type": "script",
         "path": path,
     }
@@ -83,7 +83,7 @@ def _simple_page(title: str, description: str, action_hint: str, page_type: str)
     return {
         "title": title,
         "description": description,
-        "hint": f"{title}. Press the Right Arrow key to {action_hint}.",
+        "hint": f"Press the Right Arrow key to {action_hint}.",
         "type": page_type,
     }
 
@@ -92,7 +92,7 @@ PAGE_META = {
     "home": {
         "title": "Home",
         "description": "Welcome to HelloWorld GameSpace. Use Up and Down arrows to choose a page. Press Right Arrow or Enter to move to the action buttons.",
-        "hint": "Home page. Press Right Arrow or Enter to view page controls.",
+        "hint": "Press Right Arrow or Enter to view page controls.",
         "type": "home",
     },
     "hangman": _script_page("Hangman", "Launches the pygame Hangman game.", GAME_LOGIC_DIR / "hangman_game.py"),
@@ -102,8 +102,8 @@ PAGE_META = {
     "connect4": _script_page("Connect 4", "Launches the accessible pygame Connect 4 game.", GAME_LOGIC_DIR / "c4_game.py"),
     "apples": _simple_page(
         "Apples to Apples",
-        "Native desktop Apples to Apples using the existing SQLite-backed game logic.",
-        "open Apples to Apples",
+        "Host a new game and share your room code, or join a friend's game with their code.",
+        "Press enter to launch Apples to Apples",
         "apples",
     ),
     "battleship": _simple_page(
@@ -206,6 +206,14 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         # these track what card the user has selected in the Apples game UI
         self.apples_selected_card: str | None = None
         self.apples_judge_choice: str | None = None
+        self.apples_screen = "home" # sets the current screen within the Apples game
+        self.apples_game_id: int | None = None # the current Apples game ID
+        self._apples_realtime_subscribed = False # real-time updates for the Apples game
+        self._apples_refresh_button: ctk.CTkButton | None = None # the Refresh State button in the Apples UI
+        self._apples_helper_label = None # in Apples UI; gives instructions or feedback based on the game state
+        self._apples_status_label = None # in Apples UI; shows the current prompt, judge, round, etc.
+        self._apples_info_label = None # in Apples UI; shows info about the user's hand, points, etc.
+
 
         # cached Scoreboard client (created on first use)
         self._scoreboard: "Scoreboard | None" = None
@@ -249,9 +257,6 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         self._bind_global_keys()
         # intercept the window's X button so cleanup code runs before closing
         self.protocol("WM_DELETE_WINDOW", self._on_close)
-
-        # create the Apples to Apples SQLite tables if they don't exist yet
-        apples_service.init()
 
         # show the login screen as the first thing the user sees
         self.show_login()
@@ -388,7 +393,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
     def _handle_help(self, _event=None):
         if self.current_screen == "login":
             self.speech.announce(
-                "Login screen help. Use Up and Down arrows to move between buttons. Press Enter or Space to activate. "
+                "Login screen help. Use Up and Down arrows to move between buttons. Press Enter or Space to select. "
                 "Username is required when creating a new account. "
                 "Press F to hear help again. Press J to repeat the last announcement.",
                 interrupt=True, force=True,
@@ -400,6 +405,17 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
                 "Press F to hear help again. Press J to repeat the last announcement.",
                 interrupt=True, force=True,
             )
+            if self.current_page_key == "apples":   # extra help for the Apples page
+                if self.apples_screen == "home":
+                    self.speech.announce(
+                        "Apples home help. Use Up and Down arrows to move between buttons. Create or join a game. Start the game when ready. Open the live game page after starting.",
+                        interrupt=True, force=True,
+                )
+                else:
+                    self.speech.announce(
+                        "Apples game help. Use Up and Down arrows to move through controls and cards. Press Enter or Space to select. Press Q to return to Apples home.",
+                        interrupt=True, force=True,
+                    )
         else:
             self.speech.announce("Help is not available on this screen.", interrupt=True, force=True)
         return "break"
@@ -416,7 +432,478 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         self.speech.announce("Escape key was hit, so closing gamespace... goodbye!", interrupt=True, force=True)
         self.after(5000, self._on_close)
         return "break"
+    
+    # allows for players to press Q to return to the Apples homepage
+    def _handle_apples_back_home(self, _event=None):
+        if self.current_screen == "menu" and self.current_page_key == "apples" and self.apples_screen == "game":
+            self.apples_screen = "home"
+            self.select_page("apples", announce=False)
+            self.speech.announce("Returned to Apples home page.", interrupt=True, force=True)
+            return "break"
+        return None
+    
+    def _render_apples_actions(self) -> None:
+        if self.apples_screen == "game":
+            self._render_apples_game_screen()
+        else:
+            self._render_apples_home_screen()
 
+
+    def _render_apples_home_screen(self) -> None:
+        helper = ctk.CTkLabel(
+            self.action_frame,
+            text=(
+                "Apples to Apples home. Use Up and Down arrows to move between controls. "
+                "Press Enter or Space to select. Create a game or type a code and join. "
+                "Press Start Game when everyone is ready. Open Game Page moves to the live game page. "
+                "Press Q during the live game to return here."
+            ),
+            justify="left",
+            anchor="w",
+            wraplength=self._content_wraplength,
+        )
+        helper.pack(fill="x", pady=(0, 12))
+        self._apples_helper_label = helper
+
+
+        ctk.CTkLabel(self.action_frame, text="Game code", text_color=APP_TEXT, font=_font(15, bold=True)).pack(anchor="w")
+        code_entry = ctk.CTkEntry(
+            self.action_frame,
+            textvariable=self.apples_code_var,
+            fg_color=APP_ENTRY_BG,
+            border_color=APP_BORDER,
+            text_color=APP_TEXT,
+        )
+        code_entry.pack(fill="x", pady=(4, 10))
+        self.speech.bind_focus(code_entry, "Apples game code field", "Type a game code to join or reopen a game.")
+        self.action_widgets.append(code_entry)
+
+
+        player_name = self.auth_session.username or self.auth_session.email
+        player_info = ctk.CTkLabel(
+            self.action_frame,
+            text=f"Player: {player_name}",
+            justify="left",
+            anchor="w",
+            text_color=APP_TEXT,
+            font=_font(15, bold=True),
+        )
+        player_info.pack(anchor="w", pady=(0, 8))
+        self.action_widgets.append(player_info)
+
+
+        self._add_action_button("Read Instructions", self._apples_read_instructions, "Hear Apples to Apples game instructions.")
+        self._add_action_button("Create Game", self._apples_create_game, "Create a new Apples to Apples game code.")
+        self._add_action_button("Join Game", self._apples_join_game, "Join the current Apples to Apples game code.")
+        self._add_action_button("Start Game", self._apples_start_game, "Start the current Apples to Apples game.")
+        self._add_action_button("Open Game Page", lambda: self._apples_open_game(announce=True), "Open the separate live Apples to Apples game page.")
+
+
+        game = self._current_apples_game()
+        if not game:
+            info = ctk.CTkLabel(
+                self.action_frame,
+                text="No Apples to Apples game selected yet. Create a game or type a code and join.",
+                justify="left",
+                anchor="w",
+                wraplength=self._content_wraplength,
+            )
+            info.pack(fill="x", pady=(10, 0))
+            self._apples_info_label = info
+            return
+
+
+        roster = apples_service.players(int(game["id"]))
+        judge_name = next(
+            (p["name"] for p in roster if game.get("judge_pid") and int(p["id"]) == int(game["judge_pid"])),
+            "—",
+        )
+
+        status = ctk.CTkLabel(
+            self.action_frame,
+            text=(
+                f"Current code: {game['code']}\n"
+                f"Phase: {game['phase']}\n"
+                f"Round: {game['round_num']}\n"
+                f"Judge: {judge_name}\n"
+                f"Prompt: {game['green'] or '(none yet)'}\n"
+                f"Last update: {game['last_msg']}"
+                "Use the up and down arrow keys to hear the card options, then press Enter or Space to select a card."
+            ),
+            justify="left",
+            anchor="w",
+            wraplength=self._content_wraplength,
+        )
+        status.pack(fill="x", pady=(12, 10))
+        self._apples_status_label = status
+
+
+        ctk.CTkLabel(self.action_frame, text="Players", font=_font(18, bold=True)).pack(anchor="w")
+        for player in roster:
+            suffix = " (Judge)" if game.get("judge_pid") and int(player["id"]) == int(game["judge_pid"]) else ""
+            ctk.CTkLabel(
+                self.action_frame,
+                text=f"- {player['name']}{suffix}: {player['score']}",
+                anchor="w",
+                justify="left",
+            ).pack(fill="x")
+
+
+    def _apples_skip_round(self, game_id: int, round_num: int, judge_id: int) -> None:
+        try:
+            apples_service.skip_round(game_id, round_num, judge_id)
+        except Exception as exc:
+            self.speech.announce(str(exc), interrupt=True, force=True)
+            return
+
+
+        self._apples_open_game(announce=False)
+        self.after(150, lambda: self.speech.announce("No point awarded. Round skipped.", interrupt=True, force=True))
+        self.after(350, self._announce_apples_state)
+
+
+    def _render_apples_game_screen(self) -> None:
+        game = self._current_apples_game()
+        if not game:
+            self.apples_screen = "home"
+            self._render_apples_home_screen()
+            return
+
+
+        game_id = int(game["id"])
+        roster = apples_service.players(game_id)
+        me = apples_service.my_player(game_id, self.apples_token) if self.apples_token else None
+        judge_name = next(
+            (p["name"] for p in roster if game.get("judge_pid") and int(p["id"]) == int(game["judge_pid"])),
+            "—",
+        )
+        is_judge = bool(game.get("judge_pid")) and me and int(me["id"]) == int(game["judge_pid"])
+
+
+        helper = ctk.CTkLabel(
+            self.action_frame,
+            text=(
+                "Live Apples game page. Press Q to return to Apples home. "
+                "Use Up and Down arrows to move between controls. Press Enter or Space to select."
+            ),
+            justify="left",
+            anchor="w",
+            wraplength=self._content_wraplength,
+        )
+        helper.pack(fill="x", pady=(0, 10))
+        self._apples_helper_label = helper
+
+
+        top_row = ctk.CTkFrame(self.action_frame, fg_color="transparent")
+        top_row.pack(fill="x", pady=(0, 12))
+        top_row.grid_columnconfigure((0, 1, 2), weight=1)
+
+
+        repeat_button = ctk.CTkButton(top_row, text="Read Game State", command=self._announce_apples_state, **self._button_style_kwargs())
+        repeat_button.grid(row=0, column=0, padx=(6, 0), sticky="ew")
+        self._register_action_button(repeat_button, "Hear the current round, prompt, and role.")
+
+
+        refresh_button = ctk.CTkButton(top_row, text="Refresh State", command=self._refresh_apples_page, **self._button_style_kwargs())
+        refresh_button.grid(row=0, column=1, padx=(0, 6), sticky="ew")
+        self._register_action_button(refresh_button, "Reload the current Apples game state.")
+        self._apples_refresh_button = refresh_button
+
+
+        home_button = ctk.CTkButton(top_row, text="Back to Apples Home", command=lambda: self._handle_apples_back_home(), **self._button_style_kwargs())
+        home_button.grid(row=0, column=2, padx=6, sticky="ew")
+        self._register_action_button(home_button, "Return to Apples home page.")
+
+
+        round_label = ctk.CTkLabel(
+            self.action_frame,
+            text=f"Round {game['round_num']} — Judge: {judge_name}",
+            justify="left",
+            anchor="w",
+            wraplength=self._content_wraplength,
+            font=_font(18, bold=True),
+        )
+        round_label.pack(fill="x", pady=(4, 0))
+
+
+        prompt_label = ctk.CTkLabel(
+            self.action_frame,
+            text=f"Prompt: {game['green'] or '(no prompt yet)'}",
+            justify="left",
+            anchor="w",
+            wraplength=self._content_wraplength,
+        )
+        prompt_label.pack(fill="x", pady=(0, 8))
+
+
+        status = ctk.CTkLabel(
+            self.action_frame,
+            text=(
+                f"Code: {game['code']}\n"
+                f"Phase: {game['phase']}\n"
+                f"Last update: {game['last_msg']}"
+            ),
+            justify="left",
+            anchor="w",
+            wraplength=self._content_wraplength,
+        )
+        status.pack(fill="x", pady=(0, 12))
+        self._apples_status_label = status
+
+
+        ctk.CTkLabel(self.action_frame, text="Players", font=_font(18, bold=True)).pack(anchor="w")
+        for player in roster:
+            tags = []
+            if game.get("judge_pid") and int(player["id"]) == int(game["judge_pid"]):
+                tags.append("Judge")
+            if me and int(player["id"]) == int(me["id"]):
+                tags.append("You")
+            suffix = f" ({', '.join(tags)})" if tags else ""
+            ctk.CTkLabel(
+                self.action_frame,
+                text=f"- {player['name']}{suffix}: {player['score']}",
+                anchor="w",
+                justify="left",
+            ).pack(fill="x")
+
+
+        if not me:
+            self._show_action_info("You have not joined this game yet. Press Q to return home and join the game.")
+            return
+
+
+        round_num = int(game["round_num"])
+
+
+        if game["phase"] == "lobby":
+            self._show_action_info("Game is still in the lobby. Press Q to return home and start the game.")
+            return
+
+
+        if game["phase"] == "selecting":
+            if is_judge:
+                self._show_action_info("You are the judge. Wait for the other player to submit, then press Refresh State or Read Game State.")
+            else:
+                self._show_action_info("You are a player. Move to a card and press Enter or Space to submit it immediately.")
+                hand = apples_service.get_hand(game_id, int(me["id"]))
+                for index, card in enumerate(hand[:10], start=1):
+                    btn = ctk.CTkButton(
+                        self.action_frame,
+                        text=f"Card {index}: {card}",
+                        command=lambda selected=card, gid=game_id, rn=round_num, pid=int(me["id"]), jid=int(game["judge_pid"]): self._apples_select_and_submit(gid, rn, pid, jid, selected),
+                        **self._button_style_kwargs(),
+                    )
+                    btn.pack(fill="x", pady=3)
+                    self.action_widgets.append(btn)
+                    self.action_buttons.append(btn)
+            return
+
+
+        if game["phase"] == "judging":
+            if not is_judge:
+                self._show_action_info("Waiting for the judge to pick a winner. Press Refresh State or Read Game State.")
+            else:
+                self._show_action_info("You are the judge. Move to a winning card and press Enter or Space.")
+                submissions = apples_service.list_submissions(game_id, round_num)
+                skip_btn = ctk.CTkButton(
+                    self.action_frame,
+                    text="No Point This Round",
+                    command=lambda gid=game_id, rn=round_num, jid=int(me["id"]): self._apples_skip_round(gid, rn, jid),
+                    **self._button_style_kwargs(),
+                )
+                skip_btn.pack(fill="x", pady=(6, 8))
+                self.action_widgets.append(skip_btn)
+                self.action_buttons.append(skip_btn)
+                if not submissions:
+                    ctk.CTkLabel(self.action_frame, text="No submissions yet.", justify="left", anchor="w").pack(fill="x")
+                else:
+                    for index, card in enumerate(submissions, start=1):
+                        btn = ctk.CTkButton(
+                            self.action_frame,
+                            text=f"Winner option {index}: {card}",
+                            command=lambda selected=card, gid=game_id, rn=round_num, jid=int(me["id"]): self._apples_pick_winner(gid, rn, jid, selected),
+                            **self._button_style_kwargs(),
+                        )
+                        btn.pack(fill="x", pady=3)
+                        self.action_widgets.append(btn)
+                        self.action_buttons.append(btn)
+            return
+
+
+        if game["phase"] == "game_over":
+            self._show_action_info("Game over. Press Q to return to Apples home, or create another game there.")
+
+
+    def _apples_read_instructions(self) -> None:
+        self.speech.announce(
+                "Apples to Apples instructions. "
+                "From the Apples home page, create a game or use the game code, then press enter on the Join Game button. "
+                "Press Start Game when everyone is ready, then open the live game page. "
+                "On the live game page, use Up and Down arrows to move between buttons and cards. "
+                "Press Enter or Space to select the focused button or card. "
+                "If you are a player, pressing enter or a space on a card submits it immediately. "
+                "If you are the judge, choose the winning card. "
+                "You may also choose No Point This Round to skip awarding a point. "
+                "Use Read Game State to hear the current round, prompt, judge, role, and phase. "
+                "Use Refresh State to reload the latest game data from the server. "
+                "Press Q at any time on the live game page to return to the Apples home page.",
+            interrupt=True,
+            force=True,
+        )
+
+
+    def _apples_open_game(self, announce: bool = True) -> None:
+        game = self._current_apples_game()
+        if not game:
+            self.speech.announce("No Apples game selected yet.", interrupt=True, force=True)
+            return
+        self.apples_screen = "game"
+        self.select_page("apples", announce=False)
+        self.after(100, self._focus_apples_game_default)
+        if announce:
+            self.after(180, self._announce_apples_state)
+
+
+    def _focus_apples_game_default(self) -> None:
+        btn = getattr(self, "_apples_read_state_button", None)
+        if btn is not None and btn.winfo_exists() and btn in self.action_buttons:
+            self.nav_mode = False
+            self.action_index = self.action_buttons.index(btn)
+            self._sync_keyboard_focus()
+
+
+    def _current_apples_game(self):
+        code = self.apples_code_var.get().strip().upper()
+        if not code:
+            return None
+        return apples_service.game_by_code(code)
+
+
+    def _announce_apples_state(self) -> None:
+        game = self._current_apples_game()
+        if not game:
+            return
+        roster = apples_service.players(int(game["id"]))
+        me = apples_service.my_player(int(game["id"]), self.apples_token) if self.apples_token else None
+        judge_name = next(
+            (p["name"] for p in roster if game.get("judge_pid") and int(p["id"]) == int(game["judge_pid"])),
+            "—",
+        )
+        is_judge = bool(game.get("judge_pid")) and me and int(me["id"]) == int(game["judge_pid"])
+        role = "the judge" if is_judge else "a player"
+        self.speech.announce(
+            f"Round {game['round_num']}. Prompt: {game['green'] or 'none'}. Judge: {judge_name}. You are {role}. Phase: {game['phase']}.",
+            interrupt=True,
+            force=True,
+        )
+
+
+    def _refresh_apples_page(self) -> None:
+        if self.apples_screen == "game":
+            self._apples_open_game(announce=True)
+        else:
+            self.select_page("apples", announce=False)
+            game = self._current_apples_game()
+            if game:
+                self.after(120, self._announce_apples_state)
+
+
+    def _apples_create_game(self) -> None:
+        if not self.auth_session:
+            self.speech.announce("Sign in to create an Apples game.", interrupt=True, force=True)
+            return
+        try:
+            code = apples_service.create_game(points_to_win=5)
+            self.apples_code_var.set(code)
+            self.apples_selected_card = None
+            self.speech.announce(f"Apples game created. Code {code}.", interrupt=True, force=True)
+            self.select_page("apples", announce=False)
+        except Exception as exc:
+            self.speech.announce(str(exc), interrupt=True, force=True)
+
+
+    def _apples_join_game(self) -> None:
+        code = self.apples_code_var.get().strip().upper()
+        if not code:
+            self.speech.announce("Enter a game code to join.", interrupt=True, force=True)
+            return
+        if not self.auth_session:
+            self.speech.announce("Sign in to join Apples.", interrupt=True, force=True)
+            return
+
+
+        username = self.auth_session.username or self.auth_session.email or "Guest"
+        user_id = (
+            getattr(self.auth_session, "local_id", None)
+            or getattr(self.auth_session, "user_id", None)
+            or getattr(self.auth_session, "id", None)
+        )
+        if not user_id:
+            self.speech.announce("Could not determine user id. Please sign in again.", interrupt=True, force=True)
+            return
+
+
+        try:
+            self.apples_token = apples_service.join_game(code, username, user_id=user_id)
+        except Exception as exc:
+            self.speech.announce(str(exc), interrupt=True, force=True)
+            return
+
+
+        self.apples_code_var.set(code)
+        self.apples_selected_card = None
+        self.select_page("apples", announce=False)
+        self.speech.announce(f"Joined Apples game {code} as {username}.", interrupt=True, force=True)
+
+
+    def _apples_start_game(self) -> None:
+        game = self._current_apples_game()
+        if not game:
+            self.speech.announce("Create or join a game first.", interrupt=True, force=True)
+            return
+        try:
+            apples_service.start_game(int(game["id"]))
+        except Exception as exc:
+            self.speech.announce(str(exc), interrupt=True, force=True)
+            return
+        self._apples_open_game(announce=True)
+
+
+    def _apples_select_and_submit(self, game_id: int, round_num: int, player_id: int, judge_id: int, card: str) -> None:
+        self.apples_selected_card = card
+        self._apples_submit_card(game_id, round_num, player_id, judge_id)
+
+
+    def _apples_submit_card(self, game_id: int, round_num: int, player_id: int, judge_id: int) -> None:
+        if not self.apples_selected_card:
+            self.speech.announce("Select a card first.", interrupt=True, force=True)
+            return
+        try:
+            apples_service.submit_card(game_id, round_num, player_id, judge_id, self.apples_selected_card)
+        except Exception as exc:
+            self.speech.announce(str(exc), interrupt=True, force=True)
+            return
+
+
+        selected = self.apples_selected_card
+        self.apples_selected_card = None
+        self._apples_open_game(announce=False)
+        self.after(150, lambda: self.speech.announce(f"Submitted card: {selected}.", interrupt=True, force=True))
+        self.after(350, self._announce_apples_state)
+
+
+    def _apples_pick_winner(self, game_id: int, round_num: int, judge_id: int, winning_card: str) -> None:
+        try:
+            apples_service.judge_pick(game_id, round_num, judge_id, winning_card)
+        except Exception as exc:
+            self.speech.announce(str(exc), interrupt=True, force=True)
+            return
+
+        self._apples_open_game(announce=False)
+        self.after(150, lambda: self.speech.announce(f"Selected winning card: {winning_card}.", interrupt=True, force=True))
+        self.after(350, self._announce_apples_state)
+
+# button styles
     def _button_style_kwargs(self) -> dict[str, object]:
         kwargs: dict[str, object] = {
             "height": APP_BUTTON_H,
@@ -429,6 +916,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         }
         return kwargs
 
+# Sign out button
     def _sign_out(self) -> None:
         self.auth_session = None
         self.speech.announce("Signed out.", interrupt=True, force=True)
