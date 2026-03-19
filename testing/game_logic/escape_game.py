@@ -1,6 +1,12 @@
 """Accessible Escape Room — fully voice-activated for blind players.
 
 Hold SPACEBAR to speak a command. Release to submit.
+
+Architecture:
+- Puzzle classes (Puzzle, SoundPuzzle, SequencePuzzle) define challenges
+- Room/Level classes define the game world and navigation
+- VoiceListener handles speech recognition in a background thread
+- EscapeRoomGame is the main game loop (pygame) tying it all together
 """
 
 from __future__ import annotations
@@ -14,7 +20,7 @@ import threading
 import queue
 from pathlib import Path
 
-#tts
+# Import the Text to Speech for accessibility improvement.
 _this_file = Path(__file__).resolve()
 for _parent in _this_file.parents:
     if (_parent / "tts.py").exists():
@@ -22,6 +28,7 @@ for _parent in _this_file.parents:
             sys.path.insert(0, str(_parent))
         break
 
+# If tts module isn't available, just print to console
 try:
     from tts import speak as _tts_speak, speak_interrupt as _tts_speak_interrupt
 except ImportError:
@@ -30,6 +37,7 @@ except ImportError:
     def _tts_speak_interrupt(text):
         print(text)
 
+# Optional speech recognition (the game still runs without it (keyboard-only))
 _sr_available = False
 try:
     import speech_recognition as sr
@@ -37,65 +45,88 @@ try:
 except ImportError:
     pass
 
-#audio tone
+#Audio constants and helper variables for text to speech.
 SAMPLE_RATE = 44100
 SCREEN_W, SCREEN_H = 600, 400
 
 
 def _tone(freq, dur=0.15, vol=0.4):
+    """Generate a single sine-wave tone as a pygame Sound object.
+    
+    Uses a linear amplitude envelope (1→0) so the tone fades out naturally
+    instead of clicking at the end.
+    """
     frames = int(SAMPLE_RATE * dur)
     t = np.linspace(0, dur, frames, endpoint=False)
     arr = np.sin(2 * np.pi * freq * t) * np.linspace(1.0, 0.0, frames)
     arr = (arr * vol * 32767).astype(np.int16)
-    return pygame.sndarray.make_sound(np.column_stack([arr, arr]))
+    return pygame.sndarray.make_sound(np.column_stack([arr, arr]))  # stereo
 
 
 def _chord(freqs, dur=0.4, vol=0.35):
+    """Generate a chord (multiple frequencies blended) as a pygame Sound.
+    
+    Used for success/unlock/win jingles — stacking frequencies creates
+    a richer, more satisfying audio cue.
+    """
     frames = int(SAMPLE_RATE * dur)
     t = np.linspace(0, dur, frames, endpoint=False)
     arr = sum(np.sin(2 * np.pi * f * t) for f in freqs) / len(freqs)
-    arr = arr * np.linspace(1.0, 0.0, frames)
+    arr = arr * np.linspace(1.0, 0.0, frames)  # fade-out envelope
     arr = (arr * vol * 32767).astype(np.int16)
     return pygame.sndarray.make_sound(np.column_stack([arr, arr]))
 
 
+# Track the last thing spoken so the UI can display it
 last_spoken = ""
 
 
 def speak(text, interrupt=False):
+    """Wrapper around TTS that also stores the last spoken text for display."""
     global last_spoken
     last_spoken = text
     if interrupt:
-        _tts_speak_interrupt(text)
+        _tts_speak_interrupt(text)  # cuts off any currently-playing speech
     else:
         _tts_speak(text)
 
 
-#the riddles
-
+# Puzzle classes - Creates the puzzles for the rooms.
 class Puzzle:
+    """A standard riddle/trivia puzzle with a single text answer.
+    
+    Optionally provides multiple-choice options to help guide the player.
+    """
     def __init__(self, name, description, answer, hint, reward=None, choices=None):
         self.name = name
         self.description = description
         self.answer = answer.lower().strip()
         self.hint = hint
-        self.reward = reward
-        self.choices = choices or []
+        self.reward = reward          # item added to inventory on solve
+        self.choices = choices or []   # spoken aloud as options
         self.solved = False
 
     def describe(self):
+        """Return the puzzle prompt, including choices if any."""
         msg = self.description
         if self.choices:
             msg += " Your options are: " + ", ".join(self.choices) + "."
         return msg
 
     def attempt(self, spoken):
+        """Check a spoken answer. Returns (success: bool, feedback: str).
+        
+        Matching is lenient — the answer just needs to appear *within*
+        the spoken text (e.g. "I think it's a map" matches answer "map").
+        """
         spoken = spoken.lower().strip()
+        # Direct substring match against the canonical answer
         if self.answer in spoken:
             self.solved = True
             if self.reward:
                 return True, "Correct! You found " + self.reward + "."
             return True, "Correct!"
+        # Also check each choice option individually
         for c in self.choices:
             if c.lower() in spoken and c.lower() == self.answer:
                 self.solved = True
@@ -106,31 +137,39 @@ class Puzzle:
 
 
 class SoundPuzzle(Puzzle):
+    """A puzzle where the player must count audio tones.
+    
+    Plays N beeps and the player says how many they heard. Supports
+    common speech-recognition quirks (e.g. "won" → 1, "for" → 4).
+    """
     def __init__(self, name, description, count, hint, reward=None):
         super().__init__(name, description, str(count), hint, reward)
         self.count = count
         self.choices = []
-        self._played = False
+        self._played = False  # tracks whether tones have been played yet
 
     def describe(self):
         return self.description + " Listen carefully and tell me how many you hear."
 
     def play_tones(self, snd):
+        """Play the tone `self.count` times with a gap between each."""
         self._played = True
         for _ in range(self.count):
             snd.play()
-            pygame.time.wait(500)
+            pygame.time.wait(500)  # 500ms gap between beeps
 
     def attempt(self, spoken):
+        """Match spoken number words or digits against the correct count."""
         spoken = spoken.lower().strip()
         words = spoken.split()
+        # Map common number words (including speech-recognition homophones)
         number_words = {
             "one": "1", "two": "2", "three": "3", "four": "4", "five": "5",
             "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10",
             "won": "1", "to": "2", "too": "2", "for": "4",
         }
         for w in words:
-            check = number_words.get(w, w)
+            check = number_words.get(w, w)  # convert word, digit if known
             if check == str(self.count):
                 self.solved = True
                 if self.reward:
@@ -140,10 +179,14 @@ class SoundPuzzle(Puzzle):
 
 
 class SequencePuzzle(Puzzle):
+    """A puzzle where the player must say items in the correct order.
+    
+    Each correct step advances progress; any mistake resets to the start.
+    """
     def __init__(self, name, description, sequence, hint, reward=None):
         super().__init__(name, description, "", hint, reward)
         self.sequence = [s.lower() for s in sequence]
-        self.progress = 0
+        self.progress = 0  # how many steps completed so far
 
     def describe(self):
         if self.progress > 0:
@@ -151,6 +194,7 @@ class SequencePuzzle(Puzzle):
         return self.description
 
     def attempt(self, spoken):
+        """Check if spoken text contains the next expected item in sequence."""
         spoken = spoken.lower().strip()
         expected = self.sequence[self.progress]
         if expected in spoken:
@@ -161,29 +205,34 @@ class SequencePuzzle(Puzzle):
                     return True, "Sequence complete! You found " + self.reward + "."
                 return True, "Sequence complete!"
             return True, "Good. " + str(len(self.sequence) - self.progress) + " left. What's next?"
+        # Wrong answer → full reset
         self.progress = 0
         return False, "Wrong, starting over. " + self.description
 
 
-#the room
+# Structure of the game world
 class Room:
+    """A single room in the escape room. May contain puzzles and exits."""
     def __init__(self, name, description, puzzles=None, connections=None, locked_by=None):
         self.name = name
         self.description = description
         self.puzzles = puzzles or []
-        self.connections = connections or {}
-        self.locked_by = locked_by
+        self.connections = connections or {}    # direction → room key
+        self.locked_by = locked_by             # inventory item needed to enter
         self.visited = False
 
     def all_solved(self):
+        """True if every puzzle in this room has been solved."""
         return all(p.solved for p in self.puzzles) if self.puzzles else True
 
     def describe_full(self):
+        """Full room narration: description + first unsolved puzzle + exits."""
         msg = self.description
         unsolved = [p for p in self.puzzles if not p.solved]
         if unsolved:
             first = unsolved[0]
             msg += " " + first.describe()
+            # Mention remaining puzzles by name so the player knows what's ahead
             if len(unsolved) > 1:
                 others = ", ".join(p.name for p in unsolved[1:])
                 msg += " There's also: " + others + "."
@@ -196,18 +245,22 @@ class Room:
 
 
 class Level:
+    """A complete escape room scenario with multiple connected rooms."""
     def __init__(self, name, intro, rooms, start_room, escape_room):
         self.name = name
         self.intro = intro
-        self.rooms = rooms
-        self.start_room = start_room
-        self.escape_room = escape_room
+        self.rooms = rooms              # dict of room_key → Room
+        self.start_room = start_room    # key of the starting room
+        self.escape_room = escape_room  # key of the room you must solve to win
 
+
+# Level Builder: each level is a self-contained themed escape room, with 3-4
+#rooms. There are a mix of puzzle types, key-locked doors, and a final escape test.
 
 def build_levels():
     levels = []
 
-    #haunted library
+    # Level 1: The Haunted Library
     r = {}
     r["entrance"] = Room(
         "The Entrance Hall",
@@ -217,7 +270,7 @@ def build_levels():
                 "The Door Inscription",
                 "The inscription reads: I have cities but no houses, forests but no trees, and water but no fish. What am I?",
                 "map", "Think about something you'd look at to plan a journey.",
-                reward="brass key",
+                reward="brass key",  # unlocks the vault
                 choices=["map", "painting", "globe", "book"],
             ),
         ],
@@ -250,7 +303,7 @@ def build_levels():
             SoundPuzzle(
                 "The Chiming Clock",
                 "A grandfather clock starts chiming.",
-                5, "Count each chime carefully.",
+                5, "Count each chime carefully.",  # answer: 5
                 reward="clock gear",
             ),
         ],
@@ -268,13 +321,13 @@ def build_levels():
             ),
         ],
         connections={"south": "reading room"},
-        locked_by="brass key",
+        locked_by="brass key",  # requires the key from the entrance puzzle
     )
     levels.append(Level("The Haunted Library",
         "You're trapped in an ancient library full of riddles and secrets. Find the portal in the Archive Vault to escape.",
         r, "entrance", "vault"))
 
-    #sunken lab
+    # Level 2: The Sunken Laboratory
     r = {}
     r["airlock"] = Room(
         "The Airlock",
@@ -312,7 +365,7 @@ def build_levels():
                 "The Console Override",
                 "The console needs a code. A sticky note says: the year the Titanic sank.",
                 "1912", "The Titanic sank in 1912.",
-                reward="escape pod key",
+                reward="escape pod key",  # unlocks the escape pod bay
                 choices=["1912", "1905", "1920", "1898"],
             ),
             Puzzle(
@@ -342,7 +395,7 @@ def build_levels():
         "You're trapped in an underwater research station that's losing power. Reach the escape pod before the station floods!",
         r, "airlock", "escape pod"))
 
-    #space station
+    # Level 3: The Space Station
     r = {}
     r["docking bay"] = Room(
         "The Docking Bay",
@@ -351,7 +404,7 @@ def build_levels():
             SoundPuzzle(
                 "The Alarm Code",
                 "The alarm is beeping in a pattern.",
-                7, "Count each individual beep.",
+                7, "Count each individual beep.",  # answer: 7
                 reward="security badge",
             ),
         ],
@@ -387,7 +440,7 @@ def build_levels():
                 "The captain's log asks: I'm not alive, but I grow. I don't have lungs, but I need air. Water kills me. What am I?",
                 "fire", "Think about something dangerous on a space station.",
                 choices=["fire", "rust", "mold", "virus"],
-                reward="ignition key",
+                reward="ignition key",  # unlocks the shuttle bay
             ),
         ],
         connections={"south": "docking bay", "west": "shuttle bay"},
@@ -412,17 +465,20 @@ def build_levels():
 
     return levels
 
+#Voice listener: runs speech recognition on a background thread so the pygame
+#loop doesn't block while waiting for the user's audio input.
 
-#listens to voice commands.
 class VoiceListener:
+    """Wraps SpeechRecognition to do non-blocking voice capture."""
     def __init__(self):
-        self.result_queue = queue.Queue()
+        self.result_queue = queue.Queue()  # thread-safe results channel
         self._recognizer = None
         self._mic = None
         if _sr_available:
             self._recognizer = sr.Recognizer()
             try:
                 self._mic = sr.Microphone()
+                # Brief calibration to adapt to background noise
                 with self._mic as source:
                     self._recognizer.adjust_for_ambient_noise(source, duration=0.3)
             except Exception:
@@ -430,9 +486,14 @@ class VoiceListener:
 
     @property
     def available(self):
+        """True if both recognizer and microphone are ready."""
         return self._recognizer is not None and self._mic is not None
 
     def listen_once(self):
+        """Start a background thread that listens for one phrase.
+        
+        Result (or empty string on failure) is placed on self.result_queue.
+        """
         if not self.available:
             self.result_queue.put("")
             return
@@ -443,15 +504,18 @@ class VoiceListener:
                 text = self._recognizer.recognize_google(audio)
                 self.result_queue.put(text.lower().strip())
             except Exception:
-                self.result_queue.put("")
+                self.result_queue.put("")  # timeout or recognition error
         threading.Thread(target=_work, daemon=True).start()
 
     def get_result(self):
+        """Non-blocking check for a recognition result. Returns None if not ready."""
         try:
             return self.result_queue.get_nowait()
         except queue.Empty:
             return None
 
+
+# Main game class. Manages the state, the different levels, etc.
 
 class EscapeRoomGame:
     def __init__(self):
@@ -463,37 +527,49 @@ class EscapeRoomGame:
         self.font = pygame.font.SysFont(None, 32)
         self.small_font = pygame.font.SysFont(None, 24)
 
-        self.snd_good = _chord([523, 659, 784], 0.35)
-        self.snd_bad = _tone(200, 0.3)
-        self.snd_move = _tone(440, 0.08)
-        self.snd_beep = _tone(600, 0.15)
-        self.snd_unlock = _chord([440, 554, 659, 880], 0.5)
-        self.snd_win = _chord([523, 659, 784, 1047], 0.6, 0.5)
-        self.snd_listen = _tone(880, 0.06, 0.3)
+        # Pre-generate all sound effects so there's no lag during gameplay
+        self.snd_good = _chord([523, 659, 784], 0.35)           # C major chord: correct answer
+        self.snd_bad = _tone(200, 0.3)                           # low buzz: wrong answer
+        self.snd_move = _tone(440, 0.08)                         # quick blip: room transition
+        self.snd_beep = _tone(600, 0.15)                         # beep for SoundPuzzle counting
+        self.snd_unlock = _chord([440, 554, 659, 880], 0.5)     # rising chord: door unlocked
+        self.snd_win = _chord([523, 659, 784, 1047], 0.6, 0.5)  # big fanfare: level complete
+        self.snd_listen = _tone(880, 0.06, 0.3)                  # tiny chirp: recording started
 
         self.voice = VoiceListener()
         self.levels = build_levels()
+
+        # Game state machine: menu → level_select → playing → victory
         self.state = "menu"
         self.current_level = None
         self.current_room = None
-        self.inventory = []
-        self.completed = set()
-        self.listening = False
+        self.inventory = []       # items collected during current level
+        self.completed = set()    # indices of beaten levels
+        self.listening = False    # True while waiting for speech result
         self.status_text = "Hold SPACEBAR to speak"
 
+
     def draw(self):
+        """Minimal visual display — the game is primarily audio-driven.
+        
+        Shows the current status text and a red dot when listening.
+        Sighted players or developers can see what's happening at a glance.
+        """
         self.screen.fill((10, 10, 15))
         surf = self.font.render(self.status_text, True, (180, 180, 200))
         self.screen.blit(surf, (SCREEN_W // 2 - surf.get_width() // 2, SCREEN_H // 2 - 40))
 
         if self.listening:
+            # Red recording indicator
             pygame.draw.circle(self.screen, (220, 60, 60), (SCREEN_W // 2, SCREEN_H // 2 + 30), 12)
             s = self.small_font.render("Listening...", True, (220, 60, 60))
             self.screen.blit(s, (SCREEN_W // 2 - s.get_width() // 2, SCREEN_H // 2 + 50))
 
         pygame.display.flip()
 
+
     def process_command(self, cmd):
+        """Route a voice command to the appropriate state handler."""
         if not cmd:
             speak("I didn't catch that. Try again.", interrupt=True)
             return
@@ -508,6 +584,8 @@ class EscapeRoomGame:
             self._handle_playing(cmd)
         elif self.state == "victory":
             self._handle_victory(cmd)
+
+    # --- State: Main Menu ---
 
     def _handle_menu(self, cmd):
         if any(w in cmd for w in ["start", "play", "begin", "go", "yes"]):
@@ -529,6 +607,7 @@ class EscapeRoomGame:
             speak("Say start to play, help for instructions, or quit to exit.")
 
     def _announce_levels(self):
+        """Read out the available levels with completion status."""
         msg = "Choose a level. "
         for i, lv in enumerate(self.levels):
             done = " Already completed." if i in self.completed else ""
@@ -536,6 +615,7 @@ class EscapeRoomGame:
         msg += "Say the number or name."
         speak(msg)
 
+    # Handles selecting a level. Provides instructions, etc.
     def _handle_level_select(self, cmd):
         if any(w in cmd for w in ["back", "menu", "cancel"]):
             self.state = "menu"
@@ -543,18 +623,22 @@ class EscapeRoomGame:
             return
 
         picked = None
+
+        # Try matching by number digit (1, 2, 3)
         for i, lv in enumerate(self.levels):
             if str(i + 1) in cmd:
                 picked = i
                 break
+            # Try matching by a significant word from the level name
             words = lv.name.lower().split()
             for w in words:
-                if len(w) > 3 and w in cmd:
+                if len(w) > 3 and w in cmd:  # skip short words like "the"
                     picked = i
                     break
             if picked is not None:
                 break
 
+        # Also try spoken number words ("one", "first", etc.)
         num_words = {"one": 0, "first": 0, "two": 1, "second": 1, "three": 2, "third": 2}
         if picked is None:
             for word, idx in num_words.items():
@@ -567,9 +651,12 @@ class EscapeRoomGame:
         else:
             speak("Say 1, 2, or 3, or the level name.")
 
+
     def _start_level(self, idx):
+        """Reset all rooms/puzzles for the selected level and begin."""
         self.current_level = self.levels[idx]
         self.inventory = []
+        # Reset every room and puzzle to fresh state
         for room in self.current_level.rooms.values():
             room.visited = False
             for p in room.puzzles:
@@ -583,9 +670,12 @@ class EscapeRoomGame:
         time.sleep(0.3)
         self._enter_room(self.current_level.start_room)
 
+    # Navigate through a room
     def _enter_room(self, room_key):
+        """Move the player to a room, handling locks and auto-playing sounds."""
         room = self.current_level.rooms[room_key]
 
+        # Check if the room is locked and whether we have the required item
         if room.locked_by:
             has_key = any(room.locked_by.lower() in item.lower() for item in self.inventory)
             if not has_key:
@@ -602,30 +692,47 @@ class EscapeRoomGame:
         self.snd_move.play()
         speak(room.describe_full())
 
-        #sound puzle tones
+        # Auto-play tones for the first unsolved SoundPuzzle in the room
         unsolved = [p for p in room.puzzles if not p.solved]
         if unsolved and isinstance(unsolved[0], SoundPuzzle) and not unsolved[0]._played:
             pygame.time.wait(500)
             unsolved[0].play_tones(self.snd_beep)
             speak("How many was that?")
 
+        # Check if entering the escape room with all puzzles solved, instant win
         if room_key == self.current_level.escape_room and room.all_solved():
             self._win()
 
     def _win(self):
+        """Handle level completion."""
         idx = self.levels.index(self.current_level)
         self.completed.add(idx)
         self.state = "victory"
         self.snd_win.play()
         speak("You escaped " + self.current_level.name + "! Say continue for another level, or quit to exit.")
 
+    # Handles playing an actual level in a room
     def _handle_playing(self, cmd):
+        """Process commands during active gameplay.
+        
+        Recognized commands:
+          - look/around/where/describe/room → describe current room
+          - help → list available commands
+          - inventory/items/bag → list collected items
+          - north/south/east/west → move to connected room
+          - hint → get a clue for the first unsolved puzzle
+          - repeat/again/replay → replay SoundPuzzle tones
+          - solve/answer/guess/try + answer → attempt a puzzle
+          - (any other text) → try it as an answer to the current puzzle
+        """
         room = self.current_room
 
+        # "Look around" command: re-read the room description
         if any(w in cmd for w in ["look", "around", "where", "describe", "room"]):
             speak(room.describe_full())
             return
 
+        # Help command
         if "help" in cmd:
             speak(
                 "Say look around to hear the room. "
@@ -636,6 +743,7 @@ class EscapeRoomGame:
             )
             return
 
+        # Inventory check
         if any(w in cmd for w in ["inventory", "items", "bag", "carrying"]):
             if self.inventory:
                 speak("You have: " + ", ".join(self.inventory) + ".")
@@ -643,6 +751,7 @@ class EscapeRoomGame:
                 speak("You're not carrying anything yet.")
             return
 
+        # Directional movement for corridors, keeps track of movement
         for direction in ["north", "south", "east", "west"]:
             if direction in cmd:
                 if direction in room.connections:
@@ -651,6 +760,7 @@ class EscapeRoomGame:
                     speak("You can't go " + direction + " from here.")
                 return
 
+        # Hint for first unsolved puzzle
         if "hint" in cmd:
             unsolved = [p for p in room.puzzles if not p.solved]
             if unsolved:
@@ -659,6 +769,7 @@ class EscapeRoomGame:
                 speak("Everything here is solved. Try another room.")
             return
 
+        # Repeat sound tones
         if any(w in cmd for w in ["repeat", "again", "replay"]):
             for p in room.puzzles:
                 if isinstance(p, SoundPuzzle) and not p.solved:
@@ -670,6 +781,7 @@ class EscapeRoomGame:
             speak("Nothing to repeat.")
             return
 
+        # Select a specific puzzle by its last name word (clock, for example)
         for p in room.puzzles:
             if not p.solved:
                 last_word = p.name.lower().split()[-1]
@@ -688,6 +800,8 @@ class EscapeRoomGame:
             self._try_solve(answer)
             return
 
+        # If there are unsolved puzzles, treat any unrecognized
+        # speech as an answer attempt (makes the game more forgiving)
         unsolved = [p for p in room.puzzles if not p.solved]
         if unsolved:
             self._try_solve(cmd)
@@ -696,6 +810,12 @@ class EscapeRoomGame:
         speak("I'm not sure what you mean. Say help for commands.")
 
     def _try_solve(self, answer):
+        """Attempt to solve the first unsolved puzzle in the current room.
+        
+        On success: plays a chime, adds any reward to inventory, checks
+        for room/level completion, and auto-reads the next puzzle.
+        On failure: plays a buzz and gives feedback.
+        """
         room = self.current_room
         unsolved = [p for p in room.puzzles if not p.solved]
         if not unsolved:
@@ -707,8 +827,10 @@ class EscapeRoomGame:
             if correct:
                 self.snd_good.play()
                 speak(msg)
+                # Add reward item to inventory
                 if p.reward and p.reward not in self.inventory:
                     self.inventory.append(p.reward)
+                # Check for room/level completion
                 if room.all_solved():
                     if self.current_level.rooms.get(self.current_level.escape_room) is room:
                         time.sleep(0.5)
@@ -717,7 +839,7 @@ class EscapeRoomGame:
                         exits = ", ".join(room.connections.keys())
                         speak("You solved everything in this room. You can go " + exits + ".")
                 else:
-                    #next puzzlee gets read
+                    # Auto-read the next unsolved puzzle
                     still_unsolved = [q for q in room.puzzles if not q.solved]
                     if still_unsolved:
                         nxt = still_unsolved[0]
@@ -727,11 +849,14 @@ class EscapeRoomGame:
                             nxt.play_tones(self.snd_beep)
                             speak("How many was that?")
                 return
+            # Wrong answer. Only try the first unsolved puzzle, then stop
             self.snd_bad.play()
             speak(msg)
             return
 
+    # Protocol for when the user wins. They can either quit or try again.
     def _handle_victory(self, cmd):
+        """Post-level screen: continue to another level, replay, or quit."""
         if any(w in cmd for w in ["continue", "next", "more", "yes", "level"]):
             if len(self.completed) >= len(self.levels):
                 speak("You beat every level! Say quit to exit or play again to restart.")
@@ -749,9 +874,16 @@ class EscapeRoomGame:
         else:
             speak("Say continue for another level, or quit to exit.")
 
+    # Run the program
     def run(self):
+        """Entry point: handles the pygame event loop and voice I/O.
+        
+        The loop checks for SPACEBAR press to start listening, then
+        polls for recognition results on each frame without blocking.
+        """
         time.sleep(0.5)
 
+        # If speech recognition isn't installed throw an error
         if not self.voice.available:
             speak(
                 "Welcome to the Escape Room. "
@@ -768,6 +900,7 @@ class EscapeRoomGame:
                 self.draw()
                 self.clock.tick(15)
 
+        # Normal startup with voice available
         speak(
             "Welcome to the Escape Room. "
             "Hold the spacebar to speak, then let go. "
@@ -781,13 +914,15 @@ class EscapeRoomGame:
                     pygame.quit()
                     sys.exit()
 
+                # SPACEBAR triggers voice recognition
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                     if not self.listening:
                         self.listening = True
-                        self.snd_listen.play()
+                        self.snd_listen.play()  # audible cue: "I'm listening"
                         self.status_text = "Listening..."
                         self.voice.listen_once()
 
+            # Poll for speech recognition results (Determines likely input)
             if self.listening:
                 result = self.voice.get_result()
                 if result is not None:
@@ -799,7 +934,7 @@ class EscapeRoomGame:
                     self.status_text = "Hold SPACEBAR to speak"
 
             self.draw()
-            self.clock.tick(30)
+            self.clock.tick(30)  # 30 FPS timer
 
 
 if __name__ == "__main__":
