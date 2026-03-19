@@ -18,6 +18,7 @@ Escape       — quit at any time
 import pygame
 import numpy as np
 import sys
+import threading
 from pathlib import Path
 
 # Ensure the project root containing `tts.py` is on sys.path.
@@ -32,11 +33,15 @@ for _parent in _this_file.parents:
 try:
     from tts import speak as _tts_speak
     from tts import speak_blocking as _tts_speak_blocking
+    from tts import speak_interrupt as _tts_speak_interrupt
 except ImportError:
     def _tts_speak(text: str):
         print(text)
 
     def _tts_speak_blocking(text: str):
+        print(text)
+
+    def _tts_speak_interrupt(text: str):
         print(text)
 
 # -----------------------------
@@ -119,6 +124,18 @@ def speak_block(text):
 
 def speak(text):
     _tts_speak(text)
+
+
+def speak_interrupt(text):
+    _tts_speak_interrupt(text)
+
+
+def tts_busy() -> bool:
+    """Return True while TTS audio is currently playing."""
+    try:
+        return pygame.mixer.music.get_busy()
+    except Exception:
+        return False
 
 
 def start_tutorial(screen, board, selector_col):
@@ -301,7 +318,13 @@ def main():
     selector_col = 3  # start the selector in the middle column
     game_over = False
     tutorial_done = False
+    tutorial_started = False
+    tutorial_finished = threading.Event()
     tutorial_deadline = start_tutorial(screen, board, selector_col)
+
+    def _run_startup_tutorial() -> None:
+        speak_block(FULL_TUTORIAL_TEXT)
+        tutorial_finished.set()
 
     while True:
         for event in pygame.event.get():
@@ -318,7 +341,7 @@ def main():
                 if not tutorial_done:
                     if event.key == pygame.K_RETURN:
                         tutorial_done = True
-                        speak_block("Skipping full instructions. Let's play.")
+                        speak_interrupt("Skipping full instructions. Let's play.")
                         announce_column(board, selector_col)
                     continue
 
@@ -382,8 +405,16 @@ def main():
                         else:
                             speak("Column full. Choose another column.")
 
-        if not tutorial_done and pygame.time.get_ticks() >= tutorial_deadline:
-            speak_block(FULL_TUTORIAL_TEXT)
+        if (
+            not tutorial_started
+            and not tutorial_done
+            and pygame.time.get_ticks() >= tutorial_deadline
+            and not tts_busy()
+        ):
+            tutorial_started = True
+            threading.Thread(target=_run_startup_tutorial, daemon=True).start()
+
+        if tutorial_started and not tutorial_done and tutorial_finished.is_set():
             tutorial_done = True
             announce_column(board, selector_col)
 

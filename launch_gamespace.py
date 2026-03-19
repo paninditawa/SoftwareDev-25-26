@@ -19,9 +19,6 @@ import sys
 # Path is a safe, OS-independent way to work with file paths
 from pathlib import Path
 
-# import the main() function that opens the launcher window
-from launcher.ui.application import main
-
 
 # folder that contains this file = root of the entire project
 REPO_ROOT = Path(__file__).resolve().parent
@@ -61,11 +58,26 @@ def _parse_args() -> tuple[argparse.Namespace, list[str]]:
     return parser.parse_known_args()
 
 
+def _print_dependency_help(exc: ModuleNotFoundError) -> None:
+    missing = exc.name or "a required package"
+    print(f"Missing Python package: {missing}")
+    print("Use the project virtual environment, then install requirements:")
+    print("  Windows PowerShell: .\\.venv\\Scripts\\Activate.ps1")
+    print("  Then run: python -m pip install -r requirements.txt")
+    print("If you already installed dependencies, check that 'python' points to .venv.")
+
+
 if __name__ == "__main__":
     args, remaining = _parse_args()
-    if args.run_target:
-        # launcher called with --run-target: run a specific game script
-        _run_target(args.run_target, remaining)
-    else:
-        # normal launch: open the main window
-        main()
+    try:
+        if args.run_target:
+            # launcher called with --run-target: run a specific game script
+            _run_target(args.run_target, remaining)
+        else:
+            # normal launch: open the main window
+            from launcher.ui.application import main
+
+            main()
+    except ModuleNotFoundError as exc:
+        _print_dependency_help(exc)
+        raise SystemExit(1)
