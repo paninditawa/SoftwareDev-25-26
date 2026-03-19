@@ -1,31 +1,20 @@
-# HelloWorld GameSpace
+# Hello World Gamespace
 
-Accessible collection of mini-games with a desktop-first launcher, optional Firebase login, and built-in voice announcements.
+This is a collection of mini-games designed for people who are visually impaired.
+To play, the user needs a device that has a keyboard, audio output, and can run Python. 
+A microphone is optional for voice input in Hangman, Mad Libs, and Escape Room.
 
-New contributors can follow the short setup guide in `CONTRIBUTING.md`.
+New developers can follow the short setup guide in `CONTRIBUTING.md`.
 
-## Quick Start (Windows PowerShell)
+Keyboard controls: Up/Down arrows (or Shift+Tab/Tab) to navigate, Left/Right arrows to switch between menus and actions, F1 for help, F2 to repeat the last message, F7 for current context, and Enter or Space to activate.
 
-Run these from repo root:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-python launch_gamespace.py
-```
-
-Firebase key is optional for testers. If no key is set, the launcher starts in Guest Tester mode.
-
-## Recommended: Desktop Launcher
-
-The main way to run this project is the desktop app launcher.
+## Quick start guide (Windows PowerShell)
 
 ### 1) Clone and enter the repo
 
 ```bash
 git clone <YOUR_REPO_URL>
-cd SoftwareDev-Test
+cd SoftwareDev-25-26
 ```
 
 ### 2) Create a virtual environment
@@ -55,67 +44,37 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-### 5) Optional: Configure Firebase API key (owner mode)
-
-Most users can skip this. Configure Firebase only if you want sign in/sign up/delete account features.
-
-Choose one option:
-
-Option A: environment variable
-
-```powershell
-$env:FIREBASE_API_KEY="YOUR_FIREBASE_WEB_API_KEY"
-```
-
-```bash
-export FIREBASE_API_KEY="YOUR_FIREBASE_WEB_API_KEY"
-```
-
-Option B: local secrets file (do not commit)
-
-```toml
-firebase_api_key = "YOUR_FIREBASE_WEB_API_KEY"
-```
-
-Place that file at either of these paths:
-
-- .streamlit/secrets.toml
-- testing/.streamlit/secrets.toml
-
-### 6) Run the desktop app
+### 5) Run the desktop app
 
 ```bash
 python launch_gamespace.py
 ```
 
-## Desktop Features
+## Features
 
-- Keyboard-first navigation.
-- Built-in spoken focus/context announcements.
-- Guest Tester mode when Firebase is not configured.
-- Firebase account sign-in/sign-up/delete account when configured.
-- Launch support for Hangman, Maze, Mad Libs, Connect 4, Apples to Apples, and Battleship.
+- Account sign-in, sign-up, and sign-out
+- Navigation with keyboard
+- Each instruction is presented with read-aloud
+- Mini-games include:
+    - Hangman
+    - Maze
+    - Mad Libs
+    - Escape Room
+    - Connect 4
+    - Apples to Apples
+    - Battleship
 
-## Build Windows Executable (Optional)
+## Accessibility Notes
 
-From repo root in PowerShell:
-
-```powershell
-.\build_launcher.ps1 -Clean
-```
-
-Output folder:
-
-- dist/HelloWorldGameSpace
-
-Run:
-
-- dist/HelloWorldGameSpace/HelloWorldGameSpace.exe
+- All UI was made with high-contrast text and larger default type so it is easy to read even on small displays
+- The game does not rely on color for any aspect of gameplay
+- Spoken announcements are provided throughout all aspects of the game
+- Users can access any part of the gamespace by the keyboard
+- The current visual baseline follows Microsoft guidance for keyboard access, visible focus, non-color-only state, and readable text contrast
 
 ## Troubleshooting Quick Notes
 
-- If you do not configure Firebase, the app runs in Guest Tester mode automatically.
-- If you want account features, set FIREBASE_API_KEY or create one of the secrets files listed above.
+- If sign-in fails, it may be because of an internet connection failure. If so, try reconnecting to the internet and try again
 - If PowerShell blocks activation, run:
 
 ```powershell
@@ -128,13 +87,53 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 brew install sdl2 sdl2_image sdl2_mixer sdl2_ttf pkg-config
 ```
 
-## Streamlit Launcher (Legacy / Optional)
+## Voice Input Setup (Hangman, Mad Libs, Escape Room)
 
-Streamlit still works for compatibility/testing, but the desktop launcher is the primary experience.
+Voice input is cross-platform (Windows, macOS, Linux), but each machine must have:
 
-From repo root:
+- SpeechRecognition installed
+- PyAudio installed
+- Microphone permissions enabled for desktop apps
+- A working default input device selected before launching the game
+
+Install voice dependencies:
 
 ```bash
-cd testing
-streamlit run main.py
+python -m pip install -r requirements.txt
 ```
+
+If your environment is older and missing voice deps, install directly:
+
+```bash
+python -m pip install SpeechRecognition PyAudio
+```
+
+If PyAudio fails to build on macOS/Linux, install PortAudio first:
+
+```bash
+# macOS (Homebrew)
+brew install portaudio
+
+# Ubuntu/Debian
+sudo apt-get install portaudio19-dev python3-pyaudio
+```
+
+Quick microphone check:
+
+```bash
+python -c "import speech_recognition as sr; print(len(sr.Microphone.list_microphone_names()))"
+```
+
+Expected result: a number greater than 0.
+
+## Common Voice Issues
+
+- "Voice input unavailable": Usually missing SpeechRecognition/PyAudio, blocked microphone permission, or no default mic selected
+- Spoken letters not recognized well in Hangman: Speak a single letter clearly
+- Works on one computer but not another: confirm both are using the same virtual environment and both ran pip install -r requirements.txt
+
+## Recommended Python Version
+
+Python 3.11 or 3.12 is recommended for easiest cross-platform wheel support, especially for PyAudio
+
+

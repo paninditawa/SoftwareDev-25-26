@@ -12,9 +12,9 @@ __pycache__/
 .venv/
 venv/
 
-# Local secrets
-.streamlit/secrets.toml
-testing/.streamlit/secrets.toml
+# Local auth config overrides
+config.py
+games/config.py
 
 # Packaging output
 build/

@@ -1,37 +1,98 @@
+# This is a GitHub workflow file that's basically an auto process for continuous integration (CI) testing of a Python project.
+# It has a smoke test that checks if key imports in the project work correctly across different operating systems:
+# Linux, macOS, and Windows, along with different Python versions.
+
+# display name
 name: CI
 
+# workflow starts here
 on:
+  # run workflow when code is pushed to repo
   push:
+  # run workflow when someone opens / updates pull request
   pull_request:
 
+# all jobs (groups of steps) in workflow
 jobs:
+  # health check to make sure key imports work
   smoke-test:
+    # run job on each operating system listed in the matrix below
     runs-on: ${{ matrix.os }}
+    # create combinations so same job runs multiple times
     strategy:
+      # run other OS jobs even if one fails
+      fail-fast: false
+      # matrix vals define combos
       matrix:
+        # test on Linux, macOS, and Windows
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: [3.10]
+        # use Python version 3.10 (quoted so YAML doesn't turn into 3.1)
+        python-version: ['3.10']
+
+    # actions job performs in order
     steps:
+      # download repo's code into runner machine
       - uses: actions/checkout@v4
+
+      # readable step name shown in Actions UI
       - name: Set up Python
+        # install and configure requested Python version
         uses: actions/setup-python@v4
+        # provide input values to action above
         with:
+          # use Python ver from the matrix for this run
           python-version: ${{ matrix.python-version }}
+
+      # readable step name shown in Actions UI
       - name: Upgrade pip
+        # update pip (Python package installer) to latest version
         run: python -m pip install --upgrade pip
-      - name: Install dependencies
-        run: python -m pip install -r requirements.txt
-      - name: Repo import smoke test
+
+      # readable step name shown in Actions UI
+      - name: Install OS audio build deps
+        # PyAudio needs PortAudio headers/libs on Linux and macOS.
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            sudo apt-get update
+            sudo apt-get install -y portaudio19-dev python3-dev pkg-config
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            brew install portaudio
+          fi
+
+      # readable step name shown in Actions UI
+      - name: Install dependencies
+        # install required Python packages listed in requirements.txt
+        run: python -m pip install -r requirements.txt
+
+      # readable step name shown in Actions UI
+      - name: Repo import smoke test
+        # force Bash so heredoc Python script works on Windows too
+        shell: bash
+        # run short Python script directly in workflow
+        run: |
+          # start an inline Python script and label its end with PY
           python - <<'PY'
+          # import system-level Python tools
           import sys
+          # import Path helper for working w folders
           from pathlib import Path
+          # add current folder so local project files can be imported
           sys.path.insert(0, str(Path.cwd()))
+          # try importing important modules to confirm basics still work
           try:
+              # import text-to-speech module from project
               import tts
-              import maze_game
+              # import maze game module from its folder path
+              import games.game_logic.maze_game
+              # print success text in workflow log
               print('imports OK')
+          # if any import fails, handle + report error
           except Exception as e:
+              # print failure text + error message in log
               print('import failed:', e)
+              # Stop this step with an error so workflow fails visibly
               raise
+          # end marker for inline Python script above
           PY

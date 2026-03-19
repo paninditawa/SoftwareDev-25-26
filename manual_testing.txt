@@ -1,0 +1,291 @@
+"""
+HelloWorld GameSpace — manual testing documentation.
+Covers launcher, all 7 games, and combined system tests.
+UI/audio tests done by hand; backend logic tested in test_game_logic.py.
+"""
+
+# section 1 — launcher
+
+# L-01: opening the app
+# run: python launch_gamespace.py
+# login screen appears, no terminal errors
+
+# L-02: logging in
+# enter valid email + password, sign in
+# main menu loads w/ all games on left nav
+
+# L-03: keyboard nav
+# up/down arrows move thru menu, F plays help msg
+# TTS announces each page; F reads full control guide
+
+# L-04: scoreboard
+# navigate to Scoreboard, press right arrow, click each game tab
+# leaderboard shows rank/name/wins, TTS reads scores
+
+# L-05: sign out
+# Account page → Sign Out
+# returns to login screen, TTS says "Signed out"
+
+
+# section 2 — battleship
+
+# BS-01: hosting
+# click Host Game on Battleship page
+# room code appears, one client window opens (not two), TTS reads code
+
+# BS-02: joining
+# second machine enters host's room code, clicks Join Game
+# second client connects, both players in placement phase
+
+# BS-03: placing ships
+# arrow keys move preview, J rotates, Enter confirms each ship
+# preview moves/rotates, confirmed ships show on YOUR SHIPS grid, all 5 placeable
+
+# BS-04: invalid placement
+# drag ship off board edge, press Enter
+# preview turns red, bad sound plays, TTS says "Can't place there"
+
+# BS-05: firing
+# arrow keys aim at FIRE HERE grid, Enter or Space fires
+# hit → X + hit sound; miss → O + miss sound; TTS announces result, turn switches
+
+# BS-06: winning
+# sink all opponent ships
+# TTS says "You win", win sound plays, status bar shows game over msg
+
+# BS-07: rematch
+# after game over, press J on both clients
+# both clients reset to placement w/ new layouts
+
+# BS-08: display
+# inspect game window on launch
+# titles/col letters/row numbers visible, no overlap, grid fits window
+
+# BS-09: stopping server
+# click Stop Game in launcher during active game
+# server shuts down, TTS says "Game stopped"
+
+
+# section 3 — hangman
+
+# HM-01: opening
+# launch Hangman from launcher
+# window opens, TTS reads welcome msg
+
+# HM-02: starting
+# press Enter or say "start"
+# random word chosen, dashes shown, TTS says word length
+
+# HM-03: correct guess (keyboard)
+# left/right arrows pick a letter in the word, Enter guesses
+# letter fills in all positions, TTS says count, button disappears
+
+# HM-04: wrong guess
+# guess a letter not in the word
+# hangman gains body part, TTS says letter not found + guesses left
+
+# HM-05: voice guess
+# hold Space, say letter name e.g. "bee" or "bravo"
+# correct letter guessed, same behavior as keyboard
+
+# HM-06: winning
+# guess all letters before 6 wrong guesses
+# TTS announces win + elapsed time
+
+# HM-07: losing
+# 6 wrong guesses w/o finishing
+# TTS reveals correct word, full hangman drawn
+
+# HM-08: status
+# press up/down or say "status" during game
+# TTS reads word progress, guesses left, all letters guessed so far
+
+
+# section 4 — maze game
+
+# MZ-01: opening
+# launch Maze Game
+# size select screen appears, TTS reads welcome + default size (10x10)
+
+# MZ-02: changing size
+# up/down to change size, Space to hear current
+# TTS announces each change; Space speaks size w/o changing it
+
+# MZ-03: starting
+# press Enter to generate maze
+# maze appears, player at top-left, exit at bottom-right
+
+# MZ-04: moving
+# arrow keys to move thru maze
+# move sound on open passage, wall sound when blocked
+
+# MZ-05: direction scan
+# press Space during game
+# 4 tones play (high = open, low = blocked), TTS speaks pos + open dirs + dist to exit
+
+# MZ-06: winning
+# navigate to exit cell
+# win sound plays, TTS says move count
+
+
+# section 5 — mad libs
+
+# ML-01: opening
+# launch Voice Mad Libs
+# window opens, TTS says hold Space to speak, say "start" to begin
+
+# ML-02: picking a story
+# say "start" then "1" or "adventure"
+# game confirms story, asks for first word
+
+# ML-03: entering a word
+# say a word when prompted
+# TTS confirms word saved, moves to next prompt, success sound plays
+
+# ML-04: options cmd
+# say "options" during a prompt
+# TTS reads example words for that prompt type
+
+# ML-05: finishing story
+# provide a word for every prompt
+# story read aloud, win sound plays, game offers read again/play again/quit
+
+# ML-06: repeat prompt
+# say "repeat" during a prompt
+# TTS re-reads current prompt, doesn't advance
+
+# ML-07: no mic
+# launch w/ no mic or SpeechRecognition not installed
+# TTS explains voice unavailable + reason, game doesn't crash
+
+
+# section 6 — escape room
+
+# ER-01: opening
+# launch Escape Room
+# TTS reads welcome, says to say "start"
+
+# ER-02: picking a level
+# say "start" then "1" for The Haunted Library
+# TTS reads level intro + first room + first puzzle
+
+# ER-03: solving a puzzle
+# say correct answer e.g. "map" for door inscription
+# success sound plays, TTS confirms + gives reward item
+
+# ER-04: wrong answer
+# say incorrect answer
+# fail sound plays, TTS says "That's not it"
+
+# ER-05: hint
+# say "hint" w/ unsolved puzzle in room
+# TTS gives clue w/o revealing full answer
+
+# ER-06: moving between rooms
+# say direction e.g. "go north" after solving required puzzle
+# TTS describes new room; locked room w/o key explains what's needed
+
+# ER-07: inventory
+# say "inventory" after picking up item
+# TTS lists all carried items
+
+# ER-08: sound puzzle
+# Reading Room → Chiming Clock → say "five"
+# correct # of tones play, saying right count solves puzzle
+
+# ER-09: sequence puzzle
+# submarine airlock → say "red" then "blue" then "green"
+# each step confirmed by TTS, third step solves puzzle + gives reward
+
+# ER-10: completing a level
+# solve all puzzles, reach escape room
+# win sound plays, TTS says level complete
+
+# ER-11: all three levels
+# complete all 3 levels in any order
+# after third, TTS says all levels beaten
+
+
+# section 7 — connect four
+
+# C4-01: opening
+# launch Connect Four
+# board + selector arrow appear, TTS reads tutorial prompt
+
+# C4-02: skipping tutorial
+# press Enter on skip prompt
+# TTS says "Skipping full instructions. Let's play.", col announced
+
+# C4-03: moving selector
+# left/right arrows between columns
+# arrow moves, TTS announces col # + contents bottom to top
+
+# C4-04: dropping a piece
+# Space to drop in selected col
+# piece lands in lowest open row, TTS says who dropped where, turn switches
+
+# C4-05: full column
+# fill col w/ 6 pieces, press Space again
+# TTS says "Column full. Choose another column.", no piece added, turn stays
+
+# C4-06: winning
+# get 4 in a row in any direction
+# TTS announces winner, no more moves accepted
+
+# C4-07: restart
+# press Up anytime during or after game
+# board resets, TTS says "Game restarted"
+
+# C4-08: help
+# press J during game
+# TTS reads full instructions + all controls
+
+
+# section 8 — apples to apples
+
+# AA-01: creating a game
+# click Create Game on Apples to Apples page
+# 6-char code appears, page shows lobby phase
+
+# AA-02: joining
+# enter code + player name, click Join Game
+# player appears in players list
+
+# AA-03: starting
+# 2+ players joined → click Start Apples Game
+# moves to selecting phase, green prompt + judge assigned
+
+# AA-04: submitting a card
+# non-judge: click card to select, click Submit
+# card submitted; once all non-judges submit, switches to judging phase
+
+# AA-05: judging
+# judge clicks winning card
+# that player gets a point, new round starts w/ new prompt + judge
+
+# AA-06: game over
+# play until someone hits 5 pts
+# phase changes to game_over, winner at top of scoreboard
+
+
+# section 9 — combined system tests
+
+# SYS-01: battleship across two machines
+# host on one machine, join on another via local IP, play full game
+# clients stay in sync, turns alternate correctly, win msg on right client
+
+# SYS-02: scoreboard after win
+# win Hangman or Battleship while logged in, open Scoreboard
+# win recorded, player name + count appear on leaderboard
+
+# SYS-03: accessibility end-to-end
+# monitor off/eyes closed → TTS only → navigate to Hangman → start → guess by voice → reach result
+# every step announced clearly enough to finish w/o seeing screen
+
+# SYS-04: multiple games at once
+# launch Hangman, then launch Maze Game from launcher while Hangman runs
+# both windows run simultaneously, no crashes or interference
+
+# SYS-05: escape key in every game
+# press Escape in: Hangman, Maze, Connect Four, Escape Room, Mad Libs, Battleship client
+# each closes cleanly, TTS announces exit, no orphan processes remain
