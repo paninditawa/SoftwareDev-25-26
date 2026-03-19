@@ -412,8 +412,9 @@ class VoiceMadLibsGame:
             self.status_text = "Story complete"
             self.detail_text = "Say read story, play again, or choose story"
             self.snd_win.play()
-            speak("Your story is complete. Here it is.", interrupt=True)
-            speak(self.final_story_text, interrupt=False)
+            # Combine intro and story into a single speak call so they don't
+            # overwrite each other on the shared pygame.mixer.music channel.
+            speak("Your story is complete. Here it is. " + self.final_story_text, interrupt=True)
             # Schedule the options prompt for after TTS goes quiet (gate: 1.5 s minimum).
             self._pending_options_prompt = True
             self._options_prompt_after = pygame.time.get_ticks() + 1500
@@ -631,9 +632,11 @@ class VoiceMadLibsGame:
                     self.status_text = "Hold SPACEBAR to speak"
 
             # Once the story TTS goes quiet, speak the post-story options.
+            # Check both music channel (used by gTTS) and regular channels.
             if (
                 self._pending_options_prompt
                 and pygame.time.get_ticks() >= self._options_prompt_after
+                and not pygame.mixer.music.get_busy()
                 and not pygame.mixer.get_busy()
             ):
                 self._pending_options_prompt = False
