@@ -1,6 +1,8 @@
-# HelloWorld GameSpace
+# Hello World Gamespace
 
-Accessible collection of mini-games with a desktop-first launcher, account sign-in, and spoken announcements.
+This is a collection of mini-games designed for people who are visually impaired.
+To play, the user needs a device that has a keyboard, audio output, and can run Python. 
+A microphone is optional for voice input in Hangman, Mad Libs, and Escape Room.
 
 New contributors can follow the short setup guide in `CONTRIBUTING.md`.
 
