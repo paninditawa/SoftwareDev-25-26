@@ -16,6 +16,7 @@ import subprocess  # used to launch game processes
 import threading   # background thread that restores focus after a game exits
 from pathlib import Path  # cross-platform file and folder paths
 from tkinter import messagebox  # simple error/info pop-up dialogs
+import sys
 
 # Third-party UI toolkit
 import customtkinter as ctk
@@ -209,7 +210,6 @@ class ActionsMixin:
         self.action_widgets.append(port_note)
 
     def _battleship_host(self) -> None:
-        # Start the Battleship server in a background process and open the client for the host player.
         if self.server_process and self.server_process.poll() is None:
             self.speech.announce("A game is already running. Stop it first.", interrupt=True, force=True)
             return
@@ -222,19 +222,24 @@ class ActionsMixin:
         import hashlib
         import time as _t
 
-        # Generate a short, unique room code from the host, port, and current time.
         raw = f"{host}:{port}:{_t.time()}"
         room_code = hashlib.md5(raw.encode()).hexdigest()[:6].upper()
         self.battleship_room_code_var.set(room_code)
 
         server_path = self.battleship_dir / "server.py"
-        relative_target = server_path.relative_to(self.repo_root).as_posix()
         self.server_process = subprocess.Popen(
-            self._launcher_command("--run-target", relative_target, "--host", host, "--port", str(port)),
-            cwd=str(self.repo_root),
+            [sys.executable, str(server_path), "--host", host, "--port", str(port)],
+            cwd=str(self.battleship_dir),
         )
 
-        self.after(600, lambda: self._launch_battleship_client(host, port, is_host=True, room_code=room_code))
+        # Cancel any previously scheduled client launch before scheduling a new one
+        if hasattr(self, "_pending_client_after"):
+            self.after_cancel(self._pending_client_after)
+
+        self._pending_client_after = self.after(
+            600, lambda: self._launch_battleship_client(host, port, is_host=True, room_code=room_code)
+        )
+
         self.speech.announce(
             f"Game started. Your room code is {' '.join(room_code)}. Share it with your opponent, then tell them to join.",
             interrupt=True, force=True,
@@ -249,23 +254,21 @@ class ActionsMixin:
         self._launch_battleship_client(host, port, is_host=False)
 
     def _launch_battleship_client(self, host: str, port: int, is_host: bool = False, room_code: str = "") -> None:
-        # Spawn the Battleship client process, passing the logged-in user's identity as arguments.
         client_path = self.battleship_dir / "client.py"
-        relative_target = client_path.relative_to(self.repo_root).as_posix()
 
-        # Retrieve user credentials from the current auth session (or fall back to Guest).
         user_id = self.auth_session.local_id if self.auth_session else ""
         username = (self.auth_session.username or self.auth_session.email) if self.auth_session else "Guest"
 
+        # Launch client directly with Python, not through the launcher.
         subprocess.Popen(
-            self._launcher_command(
-                "--run-target", relative_target,
+            [
+                sys.executable, str(client_path),
                 "--host", host, "--port", str(port),
                 "--user-id", user_id,
                 "--username", username,
                 "--launcher-pid", str(subprocess.os.getpid()),
-            ),
-            cwd=str(self.repo_root),
+            ],
+            cwd=str(self.battleship_dir),
         )
         action = "Hosting" if is_host else "Joining"
         self.speech.announce(f"{action} Battleship game.", interrupt=True, force=True)

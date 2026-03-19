@@ -53,14 +53,14 @@ PORT = 5555
 
 # Board and window dimensions
 BOARD_SIZE = 8
-WINDOW_WIDTH = 860
-WINDOW_HEIGHT = 480
+WINDOW_WIDTH = 1000
+WINDOW_HEIGHT = 580
 CELL = min(WINDOW_WIDTH // (BOARD_SIZE * 2 + 2), WINDOW_HEIGHT // (BOARD_SIZE + 2))
 
 # Board offsets for your ships (left) and opponent ships (right)
-LEFT_OFFSET_X = 20
+LEFT_OFFSET_X = 40
 RIGHT_OFFSET_X = LEFT_OFFSET_X + BOARD_SIZE * CELL + 40
-BOARD_OFFSET_Y = 40
+BOARD_OFFSET_Y = 52
 
 # Ships to place in order, with their lengths
 SHIP_ORDER = [
@@ -84,8 +84,6 @@ C_TEXT = (248, 250, 252)
 C_DIM = (201, 212, 224)
 C_LABEL = (255, 232, 166)
 
-pygame.init()
-pygame.mixer.init(frequency=44100, size=-16, channels=2)
 
 def _tone(freq: float, duration: float = 0.25, volume: float = 0.55) -> pygame.mixer.Sound:
     """
@@ -104,16 +102,6 @@ def _tone(freq: float, duration: float = 0.25, volume: float = 0.55) -> pygame.m
     wave = np.sin(freq * t * 2 * np.pi) * np.exp(-t * 3)
     audio = (wave * 32767 * volume).astype(np.int16)
     return pygame.sndarray.make_sound(np.column_stack((audio, audio)))
-
-# Sound effects for various game events
-SND_HIT = _tone(980, 0.30)
-SND_MISS = _tone(280, 0.25)
-SND_SINK = _tone(1200, 0.50)
-SND_WIN = _tone(1400, 0.70)
-SND_LOSE = _tone(200, 0.70)
-SND_MOVE = _tone(600, 0.08, 0.25)
-SND_USED = _tone(150, 0.15, 0.35)
-SND_BAD = _tone(180, 0.12, 0.40)
 
 
 def parse_args():
@@ -174,7 +162,6 @@ game_over_message = ""
 i_won = False
 _place_ok_count = 0  # counts consecutive PLACE_OK responses; triggers READY once all ships confirmed
 
-
 def _make_random_layout() -> list[tuple[int, int, str]]:
     """
     Generates a random valid ship layout for the board.
@@ -205,9 +192,6 @@ def _make_random_layout() -> list[tuple[int, int, str]]:
             break
     return result
 
-# Generate initial random layout; player can adjust ships before confirming
-_layout = _make_random_layout()
-
 
 def _ship_coords(ship_index: int, row: int, col: int, orient: str) -> list[tuple[int, int]]:
     """
@@ -228,6 +212,7 @@ def _ship_coords(ship_index: int, row: int, col: int, orient: str) -> list[tuple
         else [(row + i, col) for i in range(length)]
     )
 
+
 def _placement_valid(ship_index: int, row: int, col: int, orient: str) -> bool:
     """
     Checks whether a ship can be placed at the given position without going
@@ -245,19 +230,19 @@ def _placement_valid(ship_index: int, row: int, col: int, orient: str) -> bool:
         confirmed.update(_ship_coords(i, *_layout[i][:2], _layout[i][2]))
     return not any(coord in confirmed for coord in coords)
 
+
 def _mark_confirmed(ship_index: int) -> None:
     """Marks all cells of a confirmed ship as occupied on own_ships."""
     for r, c in _ship_coords(ship_index, *_layout[ship_index][:2], _layout[ship_index][2]):
         if 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
             own_ships[r][c] = True
 
+
 def _sync_cursor_to_ship() -> None:
     """Moves the cursor to the starting position of the next ship to be placed."""
     global selected_row, selected_col, orientation
     if placed_count < len(SHIP_ORDER):
         selected_row, selected_col, orientation = _layout[placed_count]
-
-_sync_cursor_to_ship()
 
 
 def send_line(line: str) -> None:
@@ -266,6 +251,7 @@ def send_line(line: str) -> None:
         sock.sendall((line + "\n").encode())
     except Exception as e:
         print("Send failed:", e)
+
 
 def report_win() -> None:
     """Records a win to the scoreboard if a user ID is provided."""
@@ -413,15 +399,6 @@ def listen_server() -> None:
             break
 
 
-threading.Thread(target=listen_server, daemon=True).start()
-
-# Initialize pygame display and fonts
-screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-font_sm = pygame.font.SysFont("segoeui", 22, bold=False)
-font_md = pygame.font.SysFont("segoeui", 28, bold=False)
-pygame.display.set_caption("EchoFleet Battleship")
-
-
 def _fit_text(font, text: str, max_width: int) -> str:
     """
     Trims text with "..." if it exceeds max_width pixels.
@@ -494,17 +471,23 @@ def draw_cursor() -> None:
 
 
 def draw_labels() -> None:
-    """Draws the column letters and row numbers along both grids."""
+    """Draws the title, column letters, and row numbers along both grids."""
+    # Draw "YOUR SHIPS" and "FIRE HERE" titles at the very top
+    screen.blit(font_md.render("YOUR SHIPS", True, C_LABEL), (LEFT_OFFSET_X, 4))
+    screen.blit(font_md.render("FIRE HERE", True, C_LABEL), (RIGHT_OFFSET_X, 4))
+
+    # Draw column letters (A-H) on the row just above the grid
     for i in range(BOARD_SIZE):
         ch = chr(ord("A") + i)
         for ox in (LEFT_OFFSET_X, RIGHT_OFFSET_X):
             lbl = font_sm.render(ch, True, C_DIM)
             screen.blit(lbl, (ox + i * CELL + CELL // 2 - 5, BOARD_OFFSET_Y - 18))
-        for ox in (LEFT_OFFSET_X - 18, RIGHT_OFFSET_X - 18):
+
+    # Draw row numbers (1-8) to the left of each grid
+    for i in range(BOARD_SIZE):
+        for ox in (LEFT_OFFSET_X - 28, RIGHT_OFFSET_X - 28):
             lbl = font_sm.render(str(i + 1), True, C_DIM)
             screen.blit(lbl, (ox, BOARD_OFFSET_Y + i * CELL + CELL // 2 - 8))
-    screen.blit(font_md.render("YOUR SHIPS", True, C_LABEL), (LEFT_OFFSET_X, BOARD_OFFSET_Y - 26))
-    screen.blit(font_md.render("FIRE HERE", True, C_LABEL), (RIGHT_OFFSET_X, BOARD_OFFSET_Y - 26))
 
 
 def draw_status() -> None:
@@ -521,108 +504,185 @@ def draw_status() -> None:
         screen.blit(font_sm.render(err, True, C_HIT), (20, y + 50))
 
 
-# Main game loop
-clock = pygame.time.Clock()
-running = True
+def main() -> None:
+    """Initializes the game, connects to the server, and runs the main loop."""
+    global args, sock, player_id, phase, placed_count, orientation
+    global own_ships, hits_on_me, hits_on_opponent, selected_row, selected_col
+    global pending_row, pending_col, pending_orient, pending_index
+    global lock, my_turn, ready, opponent_ready, awaiting_place_response
+    global last_place_time, server_connected, server_error, game_over_message
+    global i_won, _place_ok_count, _layout, screen, font_sm, font_md
+    global SND_HIT, SND_MISS, SND_SINK, SND_WIN, SND_LOSE, SND_MOVE, SND_USED, SND_BAD
 
-while running:
-    screen.fill(C_BG)
-    draw_grid(LEFT_OFFSET_X, hits_on_me, show_ships=True)
-    draw_grid(RIGHT_OFFSET_X, hits_on_opponent, show_ships=False)
-    draw_placement_preview()
-    draw_cursor()
-    draw_labels()
-    draw_status()
-    pygame.display.flip()
-    clock.tick(60)
+    args = parse_args()
 
-    # Time out placement confirmation if server doesn't respond
-    if awaiting_place_response and time.time() - last_place_time > 3:
-        awaiting_place_response = False
+    # Connect to server and receive assigned player ID
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect((args.host, args.port))
+    welcome = sock.recv(1024).decode().strip()
+    try:
+        player_id = int(welcome.split()[-1])
+    except Exception:
+        player_id = 0
 
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+    speak(f"Connected as player {player_id + 1}. Arrow keys to adjust each ship, J to rotate, Enter to confirm.")
 
-        if event.type != pygame.KEYDOWN:
-            continue
+    # Game state variables
+    phase = "placement"
+    placed_count = 0
+    orientation = "H"
+    own_ships = [[False] * BOARD_SIZE for _ in range(BOARD_SIZE)]
+    hits_on_me = [[None] * BOARD_SIZE for _ in range(BOARD_SIZE)]
+    hits_on_opponent = [[None] * BOARD_SIZE for _ in range(BOARD_SIZE)]
+    selected_row = 0
+    selected_col = 0
 
-        key = event.key
+    # Pending placement data while waiting for server confirmation
+    pending_row = None
+    pending_col = None
+    pending_orient = None
+    pending_index = None
 
-        # Arrow key movement
-        dr = dc = 0
-        if key == pygame.K_UP: dr = -1
-        elif key == pygame.K_DOWN: dr = 1
-        elif key == pygame.K_LEFT: dc = -1
-        elif key == pygame.K_RIGHT: dc = 1
+    lock = threading.Lock()
+    my_turn = False
+    ready = False
+    opponent_ready = False
+    awaiting_place_response = False
+    last_place_time = 0.0
+    server_connected = True
+    server_error = ""
+    game_over_message = ""
+    i_won = False
+    _place_ok_count = 0
 
-        if dr or dc:
-            SND_MOVE.play()
-            if phase == "placement" and placed_count < len(SHIP_ORDER):
-                _, length = SHIP_ORDER[placed_count]
-                nr = max(0, min(BOARD_SIZE - 1, selected_row + dr))
-                nc = max(0, min(BOARD_SIZE - 1, selected_col + dc))
-                # Clamp so the whole ship stays on the board
-                if orientation == "H":
-                    nc = min(nc, BOARD_SIZE - length)
-                else:
-                    nr = min(nr, BOARD_SIZE - length)
-                selected_row, selected_col = nr, nc
-                _layout[placed_count] = (selected_row, selected_col, orientation)
-                speak_interrupt(f"Row {selected_row + 1}, column {selected_col + 1}")
-            elif phase == "battle":
-                selected_row = max(0, min(BOARD_SIZE - 1, selected_row + dr))
-                selected_col = max(0, min(BOARD_SIZE - 1, selected_col + dc))
-                speak_interrupt(f"Row {selected_row + 1}, {chr(ord('A') + selected_col)}")
-            continue
+    # Generate initial random layout; player can adjust ships before confirming
+    _layout = _make_random_layout()
+    _sync_cursor_to_ship()
 
-        if key == pygame.K_j:
-            if phase == "placement" and placed_count < len(SHIP_ORDER):
-                orientation = "V" if orientation == "H" else "H"
-                # Clamp after rotation so ship stays on board
-                _, length = SHIP_ORDER[placed_count]
-                if orientation == "H":
-                    selected_col = min(selected_col, BOARD_SIZE - length)
-                else:
-                    selected_row = min(selected_row, BOARD_SIZE - length)
-                _layout[placed_count] = (selected_row, selected_col, orientation)
-                speak(f"Rotated to {orientation}")
-            elif phase == "game_over":
-                send_line("REMATCH")
-                speak("Rematch requested.")
+    # Initialize pygame, sounds, display, and fonts
+    pygame.init()
+    pygame.mixer.init(frequency=44100, size=-16, channels=2)
 
-        elif key in (pygame.K_RETURN, pygame.K_SPACE):
-            if phase == "placement" and not awaiting_place_response and placed_count < len(SHIP_ORDER):
-                if _placement_valid(placed_count, selected_row, selected_col, orientation):
-                    pending_row = selected_row
-                    pending_col = selected_col
-                    pending_orient = orientation
-                    pending_index = placed_count
-                    placed_count += 1
-                    send_line(f"PLACE {pending_index} {pending_row} {pending_col} {pending_orient}")
-                    awaiting_place_response = True
-                    last_place_time = time.time()
-                    name, _ = SHIP_ORDER[pending_index]
-                    speak(f"{name} confirmed.")
-                    if placed_count < len(SHIP_ORDER):
-                        _sync_cursor_to_ship()
-                else:
-                    SND_BAD.play()
-                    speak("Can't place there.")
-            elif phase == "placement" and placed_count >= len(SHIP_ORDER) and not ready:
-                send_line("READY")
-                speak("Ready. Waiting for opponent.")
-            elif phase == "battle" and my_turn:
-                send_line(f"FIRE {selected_row} {selected_col}")
-                speak(f"Firing row {selected_row + 1}, {chr(ord('A') + selected_col)}.")
+    SND_HIT  = _tone(980,  0.30)
+    SND_MISS = _tone(280,  0.25)
+    SND_SINK = _tone(1200, 0.50)
+    SND_WIN  = _tone(1400, 0.70)
+    SND_LOSE = _tone(200,  0.70)
+    SND_MOVE = _tone(600,  0.08, 0.25)
+    SND_USED = _tone(150,  0.15, 0.35)
+    SND_BAD  = _tone(180,  0.12, 0.40)
 
-        elif key == pygame.K_ESCAPE and phase == "game_over":
-            send_line("QUIT")
-            running = False
+    screen  = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+    font_sm = pygame.font.SysFont("segoeui", 22, bold=False)
+    font_md = pygame.font.SysFont("segoeui", 28, bold=False)
+    pygame.display.set_caption("EchoFleet Battleship")
+
+    threading.Thread(target=listen_server, daemon=True).start()
+
+    # Main game loop
+    clock = pygame.time.Clock()
+    running = True
+
+    while running:
+        screen.fill(C_BG)
+        draw_grid(LEFT_OFFSET_X, hits_on_me, show_ships=True)
+        draw_grid(RIGHT_OFFSET_X, hits_on_opponent, show_ships=False)
+        draw_placement_preview()
+        draw_cursor()
+        draw_labels()
+        draw_status()
+        pygame.display.flip()
+        clock.tick(60)
+
+        # Time out placement confirmation if server doesn't respond
+        if awaiting_place_response and time.time() - last_place_time > 3:
+            awaiting_place_response = False
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+
+            if event.type != pygame.KEYDOWN:
+                continue
+
+            key = event.key
+
+            # Arrow key movement
+            dr = dc = 0
+            if key == pygame.K_UP: dr = -1
+            elif key == pygame.K_DOWN: dr = 1
+            elif key == pygame.K_LEFT: dc = -1
+            elif key == pygame.K_RIGHT: dc = 1
+
+            if dr or dc:
+                SND_MOVE.play()
+                if phase == "placement" and placed_count < len(SHIP_ORDER):
+                    _, length = SHIP_ORDER[placed_count]
+                    nr = max(0, min(BOARD_SIZE - 1, selected_row + dr))
+                    nc = max(0, min(BOARD_SIZE - 1, selected_col + dc))
+                    # Clamp so the whole ship stays on the board
+                    if orientation == "H":
+                        nc = min(nc, BOARD_SIZE - length)
+                    else:
+                        nr = min(nr, BOARD_SIZE - length)
+                    selected_row, selected_col = nr, nc
+                    _layout[placed_count] = (selected_row, selected_col, orientation)
+                    speak_interrupt(f"Row {selected_row + 1}, column {selected_col + 1}")
+                elif phase == "battle":
+                    selected_row = max(0, min(BOARD_SIZE - 1, selected_row + dr))
+                    selected_col = max(0, min(BOARD_SIZE - 1, selected_col + dc))
+                    speak_interrupt(f"Row {selected_row + 1}, {chr(ord('A') + selected_col)}")
+                continue
+
+            if key == pygame.K_j:
+                if phase == "placement" and placed_count < len(SHIP_ORDER):
+                    orientation = "V" if orientation == "H" else "H"
+                    # Clamp after rotation so ship stays on board
+                    _, length = SHIP_ORDER[placed_count]
+                    if orientation == "H":
+                        selected_col = min(selected_col, BOARD_SIZE - length)
+                    else:
+                        selected_row = min(selected_row, BOARD_SIZE - length)
+                    _layout[placed_count] = (selected_row, selected_col, orientation)
+                    speak(f"Rotated to {orientation}")
+                elif phase == "game_over":
+                    send_line("REMATCH")
+                    speak("Rematch requested.")
+
+            elif key in (pygame.K_RETURN, pygame.K_SPACE):
+                if phase == "placement" and not awaiting_place_response and placed_count < len(SHIP_ORDER):
+                    if _placement_valid(placed_count, selected_row, selected_col, orientation):
+                        pending_row = selected_row
+                        pending_col = selected_col
+                        pending_orient = orientation
+                        pending_index = placed_count
+                        placed_count += 1
+                        send_line(f"PLACE {pending_index} {pending_row} {pending_col} {pending_orient}")
+                        awaiting_place_response = True
+                        last_place_time = time.time()
+                        name, _ = SHIP_ORDER[pending_index]
+                        speak(f"{name} confirmed.")
+                        if placed_count < len(SHIP_ORDER):
+                            _sync_cursor_to_ship()
+                    else:
+                        SND_BAD.play()
+                        speak("Can't place there.")
+                elif phase == "placement" and placed_count >= len(SHIP_ORDER) and not ready:
+                    send_line("READY")
+                    speak("Ready. Waiting for opponent.")
+                elif phase == "battle" and my_turn:
+                    send_line(f"FIRE {selected_row} {selected_col}")
+                    speak(f"Firing row {selected_row + 1}, {chr(ord('A') + selected_col)}.")
+
+            elif key == pygame.K_ESCAPE and phase == "game_over":
+                send_line("QUIT")
+                running = False
+
+    pygame.quit()
+    try:
+        sock.close()
+    except Exception:
+        pass
 
 
-pygame.quit()
-try:
-    sock.close()
-except Exception:
-    pass
+main()
