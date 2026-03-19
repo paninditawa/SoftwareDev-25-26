@@ -72,7 +72,7 @@ def _script_page(title: str, description: str, path: Path) -> dict[str, object]:
     return {
         "title": title,
         "description": description,
-        "hint": f"{title}. Press the Right Arrow key to play {title}.",
+        "hint": f"Press the Right Arrow key to play {title}.",
         "type": "script",
         "path": path,
     }
@@ -83,7 +83,7 @@ def _simple_page(title: str, description: str, action_hint: str, page_type: str)
     return {
         "title": title,
         "description": description,
-        "hint": f"{title}. Press the Right Arrow key to {action_hint}.",
+        "hint": f"Press the Right Arrow key to {action_hint}.",
         "type": page_type,
     }
 
@@ -92,7 +92,7 @@ PAGE_META = {
     "home": {
         "title": "Home",
         "description": "Welcome to HelloWorld GameSpace. Use Up and Down arrows to choose a page. Press Right Arrow or Enter to move to the action buttons.",
-        "hint": "Home page. Press Right Arrow or Enter to view page controls.",
+        "hint": "Press Right Arrow or Enter to view page controls.",
         "type": "home",
     },
     "hangman": _script_page("Hangman", "Launches the pygame Hangman game.", GAME_LOGIC_DIR / "hangman_game.py"),
