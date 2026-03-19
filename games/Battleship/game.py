@@ -1,12 +1,12 @@
 """
-Game logic for Battleship — EchoFleet.
+Battleship game logic — EchoFleet.
 Handles ship placement, turn management, and fire processing.
 """
 
 import random
 from typing import Dict, List, Optional, Set, Tuple
 
-# Board size and ship definitions
+# board size + ship definitions
 BOARD_SIZE = 8
 SHIPS = [
     ("Aircraft Carrier", 5),
@@ -16,7 +16,7 @@ SHIPS = [
     ("Destroyer", 2),
 ]
 
-Coordinate = Tuple[int, int]  # (row, col) board position
+Coordinate = Tuple[int, int]  # (row, col) board pos
 
 
 class Ship:
@@ -36,7 +36,7 @@ class Ship:
 
     def hit(self, coord: Coordinate) -> bool:
         """
-        Registers a hit if the coordinate matches a ship cell.
+        Registers a hit if the coord matches a ship cell.
 
         Returns:
         bool - True if it was a hit
@@ -53,18 +53,18 @@ class Ship:
 
 class Game:
     def __init__(self):
-        """Initializes an empty game with two players, no ships placed."""
-        self.ships: List[List[Ship]] = [[], []]   # ships[0] / ships[1] for each player
+        """Initializes an empty game w/ two players, no ships placed."""
+        self.ships: List[List[Ship]] = [[], []]          # ships[0]/ships[1] per player
         self.shots: List[Set[Coordinate]] = [set(), set()]  # cells already fired at
-        self.ready: List[bool] = [False, False]  # whether each player has confirmed all ships
-        self.turn: int = 0  # index of the player whose turn it is (0 goes first)
+        self.ready: List[bool] = [False, False]          # whether each player confirmed all ships
+        self.turn: int = 0                               # player whose turn it is (0 goes first)
 
     def _ship_coords(self, row: int, col: int, length: int, orientation: str) -> Optional[List[Coordinate]]:
         """
-        Calculates the list of coordinates a ship would occupy.
+        Calculates the coords a ship would occupy.
 
         Returns:
-        List[Coordinate] or None if placement is out of bounds or orientation is invalid
+        List[Coordinate] or None if OOB or invalid orientation
         """
         if orientation not in ("H", "V"):
             return None
@@ -98,7 +98,7 @@ class Game:
         if coords is None:
             return False, "Ship would be out of bounds or invalid orientation"
 
-        # Check for overlap with already placed ships
+        # check for overlap w/ already placed ships
         occupied: Set[Coordinate] = set()
         for ship in self.ships[player]:
             occupied.update(ship.coords)
@@ -136,12 +136,12 @@ class Game:
         Processes a fire action from a player.
 
         Returns:
-        Dict with 'status' key. Possible statuses:
+        Dict w/ 'status' key. Possible statuses:
           NOT_READY - game hasn't started yet
-          WAIT      - it's not this player's turn
-          USED      - cell was already fired at
+          WAIT      - not this player's turn
+          USED      - cell already fired at
           MISS      - shot missed all ships
-          HIT       - shot hit a ship; also contains 'ship' (str), 'sunk' (bool), 'win' (bool)
+          HIT       - shot hit; also has 'ship' (str), 'sunk' (bool), 'win' (bool)
         """
         if not self.all_ready():
             return {"status": "NOT_READY"}
@@ -168,7 +168,7 @@ class Game:
 
     def ship_at(self, player: int, coord: Coordinate) -> Optional[str]:
         """
-        Returns the name of the ship at a given coordinate, or None if empty.
+        Returns the ship name at a given coord, or None if empty.
 
         Params:
         player (int) - player index,
