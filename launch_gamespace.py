@@ -1,5 +1,5 @@
 """
-Entry point for the HelloWorld GameSpace launcher.
+Entry point for the HelloWorld GameSpace launcher. #hi
 Running this file directly opens the main launcher window.
 It can also be called with --run-target to launch an individual game
 script (the launcher does this to open games in their own process).
