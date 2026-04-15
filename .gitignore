@@ -20,6 +20,9 @@ games/config.py
 build/
 dist/
 
+# Local backup bundles (keep local, do not commit)
+backup-before-anon*.bundle
+
 # IDE/system files
 .vscode/
 .DS_Store
