@@ -34,6 +34,7 @@ from launcher.ui.theme import (
     APP_TEXT,
     _font,
 )
+from tts import set_speech_rate, get_speech_rate
 
 
 # All login-screen helpers live inside this mixin.
@@ -220,7 +221,14 @@ class LoginMixin:
                         and not keysym.startswith(("Control", "Alt", "Shift", "caps_lock"))
                     ):
                         # Speak the actual character (password field included).
-                        self.speech.announce(event.char, interrupt=True, force=True)
+                        char_names = {
+                            ".": "dot", "@": "at", "-": "dash", "_": "underscore",
+                            "!": "exclamation", "#": "hash", "$": "dollar",
+                            "%": "percent", "&": "and", "+": "plus", "=": "equals",
+                            " ": "space",
+                        }
+                        spoken = char_names.get(event.char, event.char)
+                        self.speech.announce(spoken, interrupt=True, force=True)
                 return _on_key
 
             entry.bind("<KeyRelease>", _make_key_handler(), add="+")
@@ -239,16 +247,38 @@ class LoginMixin:
         self._register_login_button(create_button, "Create Account button", "Activate to create a new account.")
 
         help_button = ctk.CTkButton(card, text="Read Login Help", command=self._handle_help, **self._button_style_kwargs())
-        help_button.pack(padx=24, pady=(0, 24), fill="x")
+        help_button.pack(padx=24, pady=(0, 16), fill="x")
         self._register_login_button(help_button, "Read Login Help button", "Activate to hear login instructions.")
 
-        # Focus order: email → password → Sign In → Create → Help → username (at the end because it is rarely needed).
+        # Voice speed slider
+        speed_frame = ctk.CTkFrame(card, fg_color="transparent")
+        speed_frame.pack(fill="x", padx=24, pady=(0, 24))
+
+        speed_label = ctk.CTkLabel(speed_frame, text="Voice Speed", text_color=APP_TEXT, font=_font(15, bold=True))
+        speed_label.pack(anchor="w")
+
+        self._speed_value_label = ctk.CTkLabel(speed_frame, text=str(get_speech_rate()), text_color=APP_MUTED, font=_font(14))
+        self._speed_value_label.pack(anchor="e")
+
+        self._speed_slider = ctk.CTkSlider(
+            speed_frame,
+            from_=-10,
+            to=10,
+            number_of_steps=20,
+            width=460,
+            command=self._on_speed_slider_change,
+        )
+        self._speed_slider.set(get_speech_rate())
+        self._speed_slider.pack(pady=(4, 0))
+
+        # Focus order: email → password → Sign In → Create → Help → speed slider → username.
         self.login_focus_order = [
             self.login_entries["email"],
             self.login_entries["password"],
             sign_in_button,
             create_button,
             help_button,
+            self._speed_slider,
             self.login_entries["username"],
         ]
         self.login_focus_index = 0
@@ -325,3 +355,9 @@ class LoginMixin:
             return
         # Auth succeeded — advance to the main menu.
         self.show_menu()
+
+    def _on_speed_slider_change(self, value: float) -> None:
+        rate = int(round(value))
+        set_speech_rate(rate)
+        self._speed_value_label.configure(text=str(rate))
+        self.speech.announce(f"Voice speed {rate}", interrupt=True, force=True)

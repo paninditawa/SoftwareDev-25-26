@@ -198,6 +198,11 @@ class ActionsMixin:
             self._stop_battleship_server,
             "Stops the running game server.",
         )
+        self._add_action_button(
+            "Read Room Code",
+            self._read_room_code,
+            "Press to hear the current room code read aloud.",
+        )
 
         # Small informational label showing the host and port the server will use.
         port_note = ctk.CTkLabel(
@@ -259,6 +264,9 @@ class ActionsMixin:
         user_id = self.auth_session.local_id if self.auth_session else ""
         username = (self.auth_session.username or self.auth_session.email) if self.auth_session else "Guest"
 
+        import os
+        env = os.environ.copy()
+
         # Launch client directly with Python, not through the launcher.
         subprocess.Popen(
             [
@@ -269,6 +277,7 @@ class ActionsMixin:
                 "--launcher-pid", str(subprocess.os.getpid()),
             ],
             cwd=str(self.battleship_dir),
+            env=env,
         )
         action = "Hosting" if is_host else "Joining"
         self.speech.announce(f"{action} Battleship game.", interrupt=True, force=True)
@@ -314,6 +323,14 @@ class ActionsMixin:
         self.server_process.terminate()
         self.server_process = None
         self.speech.announce("Game stopped.", interrupt=True, force=True)
+
+    def _read_room_code(self) -> None:
+        code = self.battleship_room_code_var.get().strip()
+        if not code:
+            self.speech.announce("No room code yet. Host a game first.", interrupt=True, force=True)
+            return
+        spelled = " ".join(code)
+        self.speech.announce(f"Room code is {spelled}.", interrupt=True, force=True)
 
     def _render_scoreboard_actions(self) -> None:
         # Scoreboard panel: first check if Supabase is available, then build game-picker buttons.
