@@ -59,6 +59,14 @@ class NavigationMixin:
         return "break"
 
     def _handle_left(self, _event=None):
+        # Left arrow: on the login screen, decrease the speed slider if it is focused.
+        if self.current_screen == "login":
+            try:
+                if self.login_focus_order[self.login_focus_index] is self._speed_slider:
+                    return self._adjust_speed_slider(-1)
+            except (AttributeError, IndexError):
+                pass
+            return None
         # Left arrow: switch to nav_mode (left column).
         if self.current_screen != "menu":
             return None
@@ -69,6 +77,14 @@ class NavigationMixin:
         return "break"
 
     def _handle_right(self, _event=None):
+        # Right arrow: on the login screen, increase the speed slider if it is focused.
+        if self.current_screen == "login":
+            try:
+                if self.login_focus_order[self.login_focus_index] is self._speed_slider:
+                    return self._adjust_speed_slider(1)
+            except (AttributeError, IndexError):
+                pass
+            return None
         # Right arrow: move focus to the action panel (right column) if any buttons exist.
         if self.current_screen != "menu":
             return None

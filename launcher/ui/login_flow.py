@@ -188,6 +188,32 @@ class LoginMixin:
         summary.pack(anchor="w", padx=24, pady=(0, 16))
         self._login_summary_label = summary
 
+        # Voice speed slider — first interactive element so users can
+        # adjust speech rate before filling in any credentials.
+        speed_frame = ctk.CTkFrame(card, fg_color="transparent")
+        speed_frame.pack(fill="x", padx=24, pady=(0, 24))
+
+        speed_label = ctk.CTkLabel(speed_frame, text="Voice Speed", text_color=APP_TEXT, font=_font(15, bold=True))
+        speed_label.pack(anchor="w")
+
+        self._speed_value_label = ctk.CTkLabel(speed_frame, text=str(get_speech_rate()), text_color=APP_MUTED, font=_font(14))
+        self._speed_value_label.pack(anchor="e")
+
+        self._speed_slider = ctk.CTkSlider(
+            speed_frame,
+            from_=-10,
+            to=10,
+            number_of_steps=20,
+            width=460,
+            command=self._on_speed_slider_change,
+        )
+        self._speed_slider.set(get_speech_rate())
+        self._speed_slider.pack(pady=(4, 0))
+        # Ensure the canvas inside CTkSlider routes Left/Right to the adjustment handler.
+        self._speed_slider._canvas.bind("<Left>", lambda e: self._adjust_speed_slider(-1), add="+")
+        self._speed_slider._canvas.bind("<Right>", lambda e: self._adjust_speed_slider(1), add="+")
+        self._speed_slider._canvas.configure(takefocus=True)
+
         # Build all three input fields in one loop to avoid repetition.
         for field_name, var, label_text, hint, show in [
             ("username", self.username_var, "Username (for new accounts)", "Type a username when creating a new account.", ""),
@@ -250,35 +276,14 @@ class LoginMixin:
         help_button.pack(padx=24, pady=(0, 16), fill="x")
         self._register_login_button(help_button, "Read Login Help button", "Activate to hear login instructions.")
 
-        # Voice speed slider
-        speed_frame = ctk.CTkFrame(card, fg_color="transparent")
-        speed_frame.pack(fill="x", padx=24, pady=(0, 24))
-
-        speed_label = ctk.CTkLabel(speed_frame, text="Voice Speed", text_color=APP_TEXT, font=_font(15, bold=True))
-        speed_label.pack(anchor="w")
-
-        self._speed_value_label = ctk.CTkLabel(speed_frame, text=str(get_speech_rate()), text_color=APP_MUTED, font=_font(14))
-        self._speed_value_label.pack(anchor="e")
-
-        self._speed_slider = ctk.CTkSlider(
-            speed_frame,
-            from_=-10,
-            to=10,
-            number_of_steps=20,
-            width=460,
-            command=self._on_speed_slider_change,
-        )
-        self._speed_slider.set(get_speech_rate())
-        self._speed_slider.pack(pady=(4, 0))
-
-        # Focus order: email → password → Sign In → Create → Help → speed slider → username.
+        # Focus order: speed slider → email → password → Sign In → Create → Help → username.
         self.login_focus_order = [
+            self._speed_slider,
             self.login_entries["email"],
             self.login_entries["password"],
             sign_in_button,
             create_button,
             help_button,
-            self._speed_slider,
             self.login_entries["username"],
         ]
         self.login_focus_index = 0
@@ -361,3 +366,10 @@ class LoginMixin:
         set_speech_rate(rate)
         self._speed_value_label.configure(text=str(rate))
         self.speech.announce(f"Voice speed {rate}", interrupt=True, force=True)
+
+    def _adjust_speed_slider(self, delta: int) -> str:
+        current = self._speed_slider.get()
+        new_val = max(-10, min(10, round(current) + delta))
+        self._speed_slider.set(new_val)
+        self._on_speed_slider_change(new_val)
+        return "break"
