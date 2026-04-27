@@ -14,6 +14,7 @@ from __future__ import annotations
 
 # importlib.util lets us load a Python config file by its file path at runtime.
 import importlib.util
+import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -102,18 +103,20 @@ def _is_usable_supabase_key(value: str | None) -> bool:
 
 
 class AuthClient:
-    def __init__(self, supabase_url: str | None, supabase_anon_key: str | None) -> None:
+    def __init__(self, supabase_url: str | None, supabase_anon_key: str | None, cache_file: Path | None = None) -> None:
         # Strip trailing slashes from the URL so path joins always work correctly.
         self.supabase_url = supabase_url.rstrip("/") if isinstance(supabase_url, str) else None
         self.supabase_anon_key = supabase_anon_key.strip() if isinstance(supabase_anon_key, str) else None
+        self.cache_file = cache_file
 
     @classmethod
     def from_workspace(cls, workspace_root: Path) -> "AuthClient":
+        cache_file = workspace_root / ".auth_username_cache.json"
         # Try to get credentials from environment variables first (highest priority).
         supabase_url = os.environ.get("SUPABASE_URL")
         supabase_anon_key = os.environ.get("SUPABASE_ANON_KEY")
         if _is_usable_url(supabase_url) and _is_usable_supabase_key(supabase_anon_key):
-            return cls(supabase_url.strip(), supabase_anon_key.strip())
+            return cls(supabase_url.strip(), supabase_anon_key.strip(), cache_file=cache_file)
 
         current_dir = Path.cwd()
 
@@ -133,10 +136,42 @@ class AuthClient:
             supabase_url = _load_value_from_python_config(config_file, ("SUPABASE_URL", "supabase_url"))
             supabase_anon_key = _load_value_from_python_config(config_file, ("SUPABASE_ANON_KEY", "supabase_anon_key"))
             if _is_usable_url(supabase_url) and _is_usable_supabase_key(supabase_anon_key):
-                return cls(supabase_url, supabase_anon_key)
+                return cls(supabase_url, supabase_anon_key, cache_file=cache_file)
 
         # No valid credentials found; the client will return False for is_configured().
-        return cls(None, None)
+        return cls(None, None, cache_file=cache_file)
+
+    def _load_username_cache(self) -> dict[str, str]:
+        if self.cache_file is None or not self.cache_file.exists():
+            return {}
+        try:
+            data = json.loads(self.cache_file.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return {
+            str(username).strip().casefold(): str(email).strip()
+            for username, email in data.items()
+            if isinstance(username, str) and isinstance(email, str) and username.strip() and email.strip()
+        }
+
+    def _save_username_cache(self, cache: dict[str, str]) -> None:
+        if self.cache_file is None:
+            return
+        try:
+            self.cache_file.write_text(json.dumps(cache, indent=2, sort_keys=True), encoding="utf-8")
+        except Exception:
+            pass
+
+    def remember_username_email(self, username: str, email: str) -> None:
+        normalized_username = username.strip().casefold() if isinstance(username, str) else ""
+        normalized_email = email.strip() if isinstance(email, str) else ""
+        if not normalized_username or not normalized_email:
+            return
+        cache = self._load_username_cache()
+        cache[normalized_username] = normalized_email
+        self._save_username_cache(cache)
 
     def is_configured(self) -> bool:
         # Returns True only if both URL and key look like real values (not placeholders).
@@ -201,6 +236,52 @@ class AuthClient:
             username=_extract_username(user),
         )
 
+    def lookup_email_by_username(self, username: str) -> str | None:
+        # Resolve a username to email from the local cache first, then try Supabase.
+        if not self.is_configured() or not username.strip():
+            cache = self._load_username_cache()
+            return cache.get(username.strip().casefold())
+        cache = self._load_username_cache()
+        cached_email = cache.get(username.strip().casefold())
+        if cached_email:
+            return cached_email
+        try:
+            import urllib.parse
+            encoded = urllib.parse.quote(username.strip())
+            headers = {
+                "apikey": self.supabase_anon_key,
+                "Authorization": f"Bearer {self.supabase_anon_key}",
+            }
+            url = f"{self.supabase_url}/rest/v1/scores?username=eq.{encoded}&select=email&limit=1"
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.ok:
+                rows = response.json()
+                if rows and isinstance(rows, list) and rows[0].get("email"):
+                    email = rows[0]["email"]
+                    self.remember_username_email(username, email)
+                    return email
+        except Exception:
+            pass
+        return None
+
+    def _store_email_in_scores(self, user_id: str, username: str, email: str, id_token: str) -> None:
+        # Upsert a minimal row in the scores table so username→email lookup works at sign-in.
+        self.remember_username_email(username, email)
+        if not self.is_configured():
+            return
+        try:
+            headers = {
+                "apikey": self.supabase_anon_key,
+                "Authorization": f"Bearer {id_token}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates",
+            }
+            payload = {"user_id": user_id, "username": username, "email": email, "game": "__profile__", "wins": 0}
+            url = f"{self.supabase_url}/rest/v1/scores"
+            requests.post(url, json=payload, headers=headers, timeout=10)
+        except Exception:
+            pass
+
     def sign_up(self, email: str, password: str, username: str | None = None) -> AuthSession:
         # Create a new account, optionally storing a username in user_metadata.
         payload: dict[str, object] = {"email": email, "password": password}
@@ -209,13 +290,18 @@ class AuthClient:
 
         data = self._request("POST", "/auth/v1/signup", payload)
         user = data.get("user") if isinstance(data, dict) else {}
-        return AuthSession(
+        session = AuthSession(
             email=(user or {}).get("email", email),
             id_token=data.get("access_token", ""),
             refresh_token=data.get("refresh_token", ""),
             local_id=(user or {}).get("id", ""),
-            # Use the metadata username if Supabase returned it, or fall back to what we sent.
             username=_extract_username(user) or (username.strip() if isinstance(username, str) and username.strip() else None),
         )
+        if session.username:
+            self.remember_username_email(session.username, session.email)
+        # Store email in the scores table so username-based sign-in works later.
+        if session.local_id and session.username and session.id_token:
+            self._store_email_in_scores(session.local_id, session.username, session.email, session.id_token)
+        return session
 
 
