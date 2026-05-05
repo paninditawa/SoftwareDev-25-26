@@ -54,12 +54,12 @@ except ImportError:
 WIDTH = 1000
 HEIGHT = 700
 FPS = 60
-BG_COLOR = (248, 250, 252)
-TEXT_COLOR = (16, 37, 63)
-ACCENT_COLOR = (14, 92, 168)
-WARNING_COLOR = (176, 83, 0)
-MUTED_TEXT = (66, 85, 109)
-FOCUS_COLOR = (255, 191, 71)
+BG_COLOR = (239, 247, 255)
+TEXT_COLOR = (24, 50, 79)
+ACCENT_COLOR = (255, 95, 143)
+WARNING_COLOR = (255, 122, 69)
+MUTED_TEXT = (81, 102, 130)
+FOCUS_COLOR = (255, 230, 109)
 RADIUS = 24
 SPACE = 20
 WORDS = ["SOFTWARE", "DEVELOPMENT", "TECHNOLOGY", "STUDENT", "ASSOCIATION", "UNITY", "COMMUNITY"]
@@ -294,10 +294,10 @@ class HangmanGame:
         pygame.display.set_caption("Hangman")
         self.clock = pygame.time.Clock()
 
-        self.font = pygame.font.SysFont("segoeui", 44, bold=False)
-        self.word_font = pygame.font.SysFont("segoeui", 40, bold=False)
-        self.title_font = pygame.font.SysFont("segoeui", 66, bold=False)
-        self.small_font = pygame.font.SysFont("segoeui", 24, bold=False)
+        self.font = pygame.font.SysFont("trebuchetms", 36, bold=True)
+        self.word_font = pygame.font.SysFont("trebuchetms", 38, bold=True)
+        self.title_font = pygame.font.SysFont("trebuchetms", 62, bold=True)
+        self.small_font = pygame.font.SysFont("trebuchetms", 24, bold=False)
         self.snd_listen = _make_tone(880, 0.06, 0.25)
 
         self.voice = VoiceListener()
@@ -364,13 +364,46 @@ class HangmanGame:
 
     # Create A–Z letter buttons
     def create_buttons(self) -> None:
-        x_start = round((WIDTH - (RADIUS * 2 + SPACE) * 13) / 2)
-        y_start = 540
+        self.letters = []
+        grid_width = (RADIUS * 2 + SPACE) * 13
+        x_start = round((WIDTH - grid_width) / 2)
+        y_start = HEIGHT - 150
         A = 65
         for i in range(26):
             x = x_start + SPACE * 2 + ((RADIUS * 2 + SPACE) * (i % 13))
             y = y_start + ((i // 13) * (SPACE + RADIUS * 2))
             self.letters.append([x, y, chr(A + i), True])
+
+    def _fit_text(self, font: pygame.font.Font, text: str, max_width: int) -> str:
+        fitted = text
+        while fitted and font.size(fitted)[0] > max_width:
+            fitted = fitted[:-1]
+        return fitted
+
+    def _draw_centered_text(self, font: pygame.font.Font, text: str, color: tuple[int, int, int], center_x: int, y: int, max_width: int) -> None:
+        fitted = self._fit_text(font, text, max_width)
+        rendered = font.render(fitted, True, color)
+        self.win.blit(rendered, (center_x - rendered.get_width() / 2, y))
+
+    def _draw_wrapped_text(self, font: pygame.font.Font, text: str, color: tuple[int, int, int], x: int, y: int, max_width: int, line_gap: int = 8) -> int:
+        words = text.split()
+        lines: list[str] = []
+        current = ""
+        for word in words:
+            trial = word if not current else f"{current} {word}"
+            if font.size(trial)[0] <= max_width:
+                current = trial
+            else:
+                if current:
+                    lines.append(current)
+                current = word
+        if current:
+            lines.append(current)
+        line_height = font.get_linesize()
+        for index, line in enumerate(lines):
+            rendered = font.render(line, True, color)
+            self.win.blit(rendered, (x, y + index * (line_height + line_gap)))
+        return len(lines) * line_height + max(0, len(lines) - 1) * line_gap
 
     def _start_game(self) -> None:
         self.reset_game()
@@ -495,37 +528,49 @@ class HangmanGame:
 
     #Draws the handman figure depending on current game status
     def draw_hangman(self) -> None:
-        x = 150
-        y = 450
-        pygame.draw.line(self.win, TEXT_COLOR, (x, y), (x + 200, y), 5)
-        pygame.draw.line(self.win, TEXT_COLOR, (x + 100, y), (x + 100, y - 300), 5)
-        pygame.draw.line(self.win, TEXT_COLOR, (x + 100, y - 300), (x + 200, y - 300), 5)
-        pygame.draw.line(self.win, TEXT_COLOR, (x + 200, y - 300), (x + 200, y - 250), 5)
+        panel = pygame.Rect(40, 135, 360, 360)
+        pygame.draw.rect(self.win, (211, 231, 255), panel, border_radius=28)
+        pygame.draw.rect(self.win, (72, 215, 255), panel, 3, border_radius=28)
+
+        x = 110
+        y = 445
+        pygame.draw.line(self.win, (72, 215, 255), (x, y), (x + 210, y), 8)
+        pygame.draw.line(self.win, (72, 215, 255), (x + 90, y), (x + 90, y - 280), 8)
+        pygame.draw.line(self.win, (72, 215, 255), (x + 90, y - 280), (x + 210, y - 280), 8)
+        pygame.draw.line(self.win, (72, 215, 255), (x + 210, y - 280), (x + 210, y - 230), 6)
         if self.hangman >= 1:
-            pygame.draw.circle(self.win, TEXT_COLOR, (x + 200, y - 220), 30, 3)
+            pygame.draw.circle(self.win, FOCUS_COLOR, (x + 210, y - 200), 30, 4)
         if self.hangman >= 2:
-            pygame.draw.line(self.win, TEXT_COLOR, (x + 200, y - 190), (x + 200, y - 120), 3)
+            pygame.draw.line(self.win, TEXT_COLOR, (x + 210, y - 170), (x + 210, y - 95), 5)
         if self.hangman >= 3:
-            pygame.draw.line(self.win, TEXT_COLOR, (x + 200, y - 170), (x + 160, y - 150), 3)
+            pygame.draw.line(self.win, TEXT_COLOR, (x + 210, y - 150), (x + 168, y - 130), 5)
         if self.hangman >= 4:
-            pygame.draw.line(self.win, TEXT_COLOR, (x + 200, y - 170), (x + 240, y - 150), 3)
+            pygame.draw.line(self.win, TEXT_COLOR, (x + 210, y - 150), (x + 252, y - 130), 5)
         if self.hangman >= 5:
-            pygame.draw.line(self.win, TEXT_COLOR, (x + 200, y - 120), (x + 170, y - 80), 3)
+            pygame.draw.line(self.win, TEXT_COLOR, (x + 210, y - 95), (x + 178, y - 52), 5)
         if self.hangman >= 6:
-            pygame.draw.line(self.win, TEXT_COLOR, (x + 200, y - 120), (x + 230, y - 80), 3)
+            pygame.draw.line(self.win, TEXT_COLOR, (x + 210, y - 95), (x + 242, y - 52), 5)
 
     #Draws the menu for the user to pick from
     def draw_menu(self) -> None:
         self.win.fill(BG_COLOR)
-        max_w = WIDTH - 40
-        title = self.title_font.render("Hangman", True, TEXT_COLOR)
-        self.win.blit(title, (WIDTH / 2 - title.get_width() / 2, 190))
+        pygame.draw.rect(self.win, (255, 255, 255), (24, 24, WIDTH - 48, HEIGHT - 48), border_radius=32)
+        pygame.draw.rect(self.win, (72, 215, 255), (24, 24, WIDTH - 48, HEIGHT - 48), 3, border_radius=32)
+        max_w = WIDTH - 140
+        title = self.title_font.render("HANGMAN", True, TEXT_COLOR)
+        self.win.blit(title, (WIDTH / 2 - title.get_width() / 2, 135))
+
+        badge = self.small_font.render("VOICE ARCADE MODE", True, BG_COLOR)
+        badge_box = pygame.Rect(WIDTH / 2 - badge.get_width() / 2 - 16, 90, badge.get_width() + 32, 40)
+        pygame.draw.rect(self.win, FOCUS_COLOR, badge_box, border_radius=20)
+        self.win.blit(badge, (badge_box.x + 16, badge_box.y + 8))
 
         menu_line = "Hold SPACE and say start, or press ENTER to begin"
-        while menu_line and self.word_font.size(menu_line)[0] > max_w:
-            menu_line = menu_line[:-1]
-        text = self.word_font.render(menu_line, True, TEXT_COLOR)
-        self.win.blit(text, (WIDTH / 2 - text.get_width() / 2, 330))
+        text = self.word_font.render(self._fit_text(self.word_font, menu_line, max_w - 40), True, TEXT_COLOR)
+        prompt_box = pygame.Rect(90, 260, WIDTH - 180, 96)
+        pygame.draw.rect(self.win, (223, 238, 255), prompt_box, border_radius=24)
+        pygame.draw.rect(self.win, ACCENT_COLOR, prompt_box, 3, border_radius=24)
+        self.win.blit(text, (WIDTH / 2 - text.get_width() / 2, prompt_box.y + 26))
 
         #Handles user voice input
         mic_status = "Microphone: ON" if self.voice.available else "Microphone: OFF (keyboard mode)"
@@ -533,50 +578,104 @@ class HangmanGame:
             mic_status = mic_status[:-1]
         mic_color = ACCENT_COLOR if self.voice.available else WARNING_COLOR
         mic_text = self.small_font.render(mic_status, True, mic_color)
-        self.win.blit(mic_text, (WIDTH / 2 - mic_text.get_width() / 2, 410))
+        self.win.blit(mic_text, (WIDTH / 2 - mic_text.get_width() / 2, 390))
 
         hint = self.small_font.render("ESC exits", True, MUTED_TEXT)
-        self.win.blit(hint, (WIDTH / 2 - hint.get_width() / 2, 455))
+        self.win.blit(hint, (WIDTH / 2 - hint.get_width() / 2, 430))
         pygame.display.update()
 
     #Draws out the game
     def draw_game(self) -> None:
         self.win.fill(BG_COLOR)
-        title = self.title_font.render("Hangman", True, TEXT_COLOR)
-        self.win.blit(title, (WIDTH / 2 - title.get_width() / 2, 20))
+        pygame.draw.rect(self.win, (255, 255, 255), (20, 20, WIDTH - 40, HEIGHT - 40), border_radius=32)
+        pygame.draw.rect(self.win, (72, 215, 255), (20, 20, WIDTH - 40, HEIGHT - 40), 3, border_radius=32)
 
-        display_word = "".join((letter + " ") if letter in self.guessed else "_ " for letter in self.word)
-        text = self.word_font.render(display_word, True, TEXT_COLOR)
-        self.win.blit(text, (WIDTH / 2 - text.get_width() / 2, 250))
+        title = self.title_font.render("HANGMAN", True, TEXT_COLOR)
+        self.win.blit(title, (WIDTH / 2 - title.get_width() / 2, 28))
+
+        top_bar = pygame.Rect(410, 110, WIDTH - 450, 110)
+        pygame.draw.rect(self.win, (223, 238, 255), top_bar, border_radius=24)
+        pygame.draw.rect(self.win, ACCENT_COLOR, top_bar, 3, border_radius=24)
+
+        status_height = self._draw_wrapped_text(
+            self.small_font,
+            self.status_text,
+            TEXT_COLOR,
+            top_bar.x + 18,
+            top_bar.y + 12,
+            top_bar.width - 36,
+            line_gap=4,
+        )
+        detail = self.small_font.render(f"Wrong guesses left: {6 - self.hangman}", True, MUTED_TEXT)
+        self.win.blit(detail, (top_bar.x + 18, top_bar.y + 18 + status_height))
+
+        word_area_x = 410
+        word_area_w = WIDTH - 450
+        slot_w = min(62, max(40, (word_area_w - 20) // max(1, len(self.word))))
+        gap = 8
+        total_w = len(self.word) * slot_w + (len(self.word) - 1) * gap
+        start_x = word_area_x + max(0, (word_area_w - total_w) // 2)
+        for index, letter in enumerate(self.word):
+            x = start_x + index * (slot_w + gap)
+            y = 255
+            pygame.draw.rect(self.win, (223, 238, 255), (x, y, slot_w, 66), border_radius=16)
+            pygame.draw.rect(self.win, (72, 215, 255), (x, y, slot_w, 66), 2, border_radius=16)
+            shown = letter if letter in self.guessed else "_"
+            text = self.word_font.render(shown, True, TEXT_COLOR)
+            self.win.blit(text, (x + slot_w / 2 - text.get_width() / 2, y + 12))
+
+        guessed_text = self.detail_text if self.detail_text else "Guess one letter at a time"
+        guessed_box = pygame.Rect(410, 340, WIDTH - 450, 88)
+        pygame.draw.rect(self.win, (235, 244, 255), guessed_box, border_radius=20)
+        pygame.draw.rect(self.win, (72, 215, 255), guessed_box, 2, border_radius=20)
+        self._draw_wrapped_text(
+            self.small_font,
+            guessed_text,
+            MUTED_TEXT,
+            guessed_box.x + 16,
+            guessed_box.y + 14,
+            guessed_box.width - 32,
+            line_gap=4,
+        )
 
         #Shows all the letters to choose from
         for i, letter in enumerate(self.letters):
             x, y, ltr, visible = letter
             if visible:
                 if i == self.selected_index:
-                    pygame.draw.circle(self.win, ACCENT_COLOR, (x, y), RADIUS)
+                    pygame.draw.circle(self.win, ACCENT_COLOR, (x, y), RADIUS + 6)
+                    pygame.draw.circle(self.win, FOCUS_COLOR, (x, y), RADIUS + 6, 3)
+                pygame.draw.circle(self.win, (223, 238, 255), (x, y), RADIUS)
                 pygame.draw.circle(self.win, TEXT_COLOR, (x, y), RADIUS, 3)
                 text_color = BG_COLOR if i == self.selected_index else TEXT_COLOR
                 txt = self.font.render(ltr, True, text_color)
                 self.win.blit(txt, (x - txt.get_width() / 2, y - txt.get_height() / 2))
+            else:
+                pygame.draw.circle(self.win, (235, 244, 255), (x, y), RADIUS)
+                pygame.draw.circle(self.win, (138, 165, 199), (x, y), RADIUS, 2)
+                txt = self.font.render(ltr, True, (138, 165, 199))
+                self.win.blit(txt, (x - txt.get_width() / 2, y - txt.get_height() / 2))
 
         if self.voice.available and self.listening:
-            listening = self.small_font.render("Listening...", True, FOCUS_COLOR)
-            self.win.blit(listening, (10, 132))
+            listen_box = pygame.Rect(410, 440, 180, 34)
+            pygame.draw.rect(self.win, FOCUS_COLOR, listen_box, border_radius=16)
+            listening = self.small_font.render("Listening...", True, BG_COLOR)
+            self.win.blit(listening, (listen_box.x + 16, listen_box.y + 4))
 
         if last_spoken:
             spoken_line = "Last: " + last_spoken
-            while spoken_line and self.small_font.size(spoken_line)[0] > WIDTH - 20:
-                spoken_line = spoken_line[:-1]
-            last = self.small_font.render(spoken_line, True, MUTED_TEXT)
-            self.win.blit(last, (10, 105))
+            spoken_box = pygame.Rect(600, 438, WIDTH - 640, 38)
+            pygame.draw.rect(self.win, (235, 244, 255), spoken_box, border_radius=16)
+            pygame.draw.rect(self.win, (138, 165, 199), spoken_box, 2, border_radius=16)
+            last = self.small_font.render(self._fit_text(self.small_font, spoken_line, spoken_box.width - 24), True, MUTED_TEXT)
+            self.win.blit(last, (spoken_box.x + 12, spoken_box.y + 6))
 
         hint = self.small_font.render("Left/Right move letters | Up/Down status | ENTER guesses | Hold SPACE to speak", True, MUTED_TEXT)
         hint_line = hint
         if hint.get_width() > WIDTH - 20:
             hint_text = "L/R letters | Up/Down status | ENTER guess | Hold SPACE"
             hint_line = self.small_font.render(hint_text, True, MUTED_TEXT)
-        self.win.blit(hint_line, (WIDTH / 2 - hint_line.get_width() / 2, 468))
+        self.win.blit(hint_line, (WIDTH / 2 - hint_line.get_width() / 2, HEIGHT - 205))
 
         self.draw_hangman()
         pygame.display.update()
@@ -584,6 +683,8 @@ class HangmanGame:
     #Tells the user the result of the game
     def draw_result(self) -> None:
         self.win.fill(BG_COLOR)
+        pygame.draw.rect(self.win, (255, 255, 255), (24, 24, WIDTH - 48, HEIGHT - 48), border_radius=32)
+        pygame.draw.rect(self.win, (72, 215, 255), (24, 24, WIDTH - 48, HEIGHT - 48), 3, border_radius=32)
         if self.result == "win":
             msg = "YOU WON!"
             sub_line = "Say restart or press ENTER to play again"
@@ -604,14 +705,18 @@ class HangmanGame:
         #Fits text onto screen
         while msg and self.title_font.size(msg)[0] > WIDTH - 40:
             msg = msg[:-1]
-        text = self.title_font.render(msg, True, TEXT_COLOR)
-        self.win.blit(text, (WIDTH / 2 - text.get_width() / 2, 280))
+        result_color = FOCUS_COLOR if self.result == "win" else WARNING_COLOR
+        text = self.title_font.render(msg, True, result_color)
+        self.win.blit(text, (WIDTH / 2 - text.get_width() / 2, 250))
 
         #Fits text onto screen
         while sub_line and self.word_font.size(sub_line)[0] > WIDTH - 40:
             sub_line = sub_line[:-1]
         sub = self.word_font.render(sub_line, True, TEXT_COLOR)
-        self.win.blit(sub, (WIDTH / 2 - sub.get_width() / 2, 390))
+        info_box = pygame.Rect(130, 360, WIDTH - 260, 90)
+        pygame.draw.rect(self.win, (223, 238, 255), info_box, border_radius=24)
+        pygame.draw.rect(self.win, ACCENT_COLOR, info_box, 3, border_radius=24)
+        self.win.blit(sub, (WIDTH / 2 - sub.get_width() / 2, 387))
 
         pygame.display.update()
 
