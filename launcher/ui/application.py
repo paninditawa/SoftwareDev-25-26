@@ -41,6 +41,7 @@ from launcher.ui.navigation_flow import NavigationMixin
 from launcher.services.leaderboard import Scoreboard
 from launcher.ui.theme import (
     APP_ACCENT,
+    APP_ACCENT_GLOW,
     APP_ACCENT_SOFT,
     APP_ACCENT_STRONG,
     APP_BG,
@@ -54,6 +55,7 @@ from launcher.ui.theme import (
     APP_MUTED,
     APP_PANEL,
     APP_PANEL_ALT,
+    APP_PANEL_RAISED,
     APP_ROW_HIGHLIGHT,
     APP_TEXT,
     _font,
@@ -227,23 +229,44 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         # which game's scores to show when the scoreboard tab is open
         self._sb_selected_game: str = "battleship"
 
-        self.header = ctk.CTkLabel(
+        self.hero = ctk.CTkFrame(
             self,
+            fg_color=APP_PANEL_ALT,
+            corner_radius=22,
+            border_width=2,
+            border_color=APP_BORDER,
+        )
+        self.hero.pack(fill="x", padx=24, pady=(20, 12))
+
+        self.hero_badge = ctk.CTkLabel(
+            self.hero,
+            text="PLAYER HUB",
+            text_color=APP_BG,
+            fg_color=APP_ACCENT_GLOW,
+            corner_radius=999,
+            padx=14,
+            pady=6,
+            font=_font(14, bold=True),
+        )
+        self.hero_badge.pack(anchor="w", padx=20, pady=(18, 8))
+
+        self.header = ctk.CTkLabel(
+            self.hero,
             text="HelloWorld GameSpace",
             text_color=APP_TEXT,
-            font=_font(30, bold=True),
+            font=_font(34, bold=True),
         )
-        self.header.pack(fill="x", padx=24, pady=(20, 10))
+        self.header.pack(fill="x", padx=20, pady=(0, 4))
 
         self.subheader = ctk.CTkLabel(
-            self,
-            text="Keyboard-first, blind-accessible launcher",
+            self.hero,
+            text="An accessible arcade launcher with big, playful controls",
             text_color=APP_MUTED,
             font=_font(18, bold=True),
         )
-        self.subheader.pack(fill="x", padx=24, pady=(0, 10))
+        self.subheader.pack(fill="x", padx=20, pady=(0, 18))
 
-        self.content = ctk.CTkFrame(self, fg_color=APP_PANEL, corner_radius=16, border_width=1, border_color=APP_BORDER)
+        self.content = ctk.CTkFrame(self, fg_color=APP_PANEL, corner_radius=20, border_width=2, border_color=APP_BORDER)
         self.content.pack(fill="both", expand=True, padx=24, pady=(0, 12))
 
         self.status_label = ctk.CTkLabel(
@@ -253,7 +276,11 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             justify="left",
             wraplength=900,
             text_color=APP_TEXT,
-            font=_font(18, bold=True),
+            fg_color=APP_PANEL_ALT,
+            corner_radius=16,
+            padx=18,
+            pady=12,
+            font=_font(17, bold=True),
         )
         self.status_label.pack(fill="x", padx=24, pady=(0, 16))
 
@@ -923,10 +950,36 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             "fg_color": APP_BUTTON,
             "hover_color": APP_BUTTON_HOVER,
             "font": _font(16, bold=True),
-            "border_width": 1,
+            "corner_radius": 14,
+            "border_width": 2,
             "border_color": APP_BORDER,
         }
         return kwargs
+
+    def _entry_style_kwargs(self) -> dict[str, object]:
+        return {
+            "height": 42,
+            "fg_color": APP_ENTRY_BG,
+            "border_color": APP_BORDER,
+            "text_color": APP_TEXT,
+            "corner_radius": 12,
+        }
+
+    def _surface_style_kwargs(self) -> dict[str, object]:
+        return {
+            "fg_color": APP_PANEL_ALT,
+            "corner_radius": 16,
+            "border_width": 2,
+            "border_color": APP_BORDER,
+        }
+
+    def _raised_surface_style_kwargs(self) -> dict[str, object]:
+        return {
+            "fg_color": APP_PANEL_RAISED,
+            "corner_radius": 14,
+            "border_width": 1,
+            "border_color": APP_BORDER,
+        }
 
 # Sign out button
     def _sign_out(self) -> None:

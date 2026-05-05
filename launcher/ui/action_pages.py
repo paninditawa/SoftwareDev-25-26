@@ -31,6 +31,7 @@ from launcher.ui.theme import (
     APP_MUTED,
     APP_PANEL,
     APP_PANEL_ALT,
+    APP_PANEL_RAISED,
     APP_ROW_HIGHLIGHT,
     APP_TEXT,
     _font,
@@ -101,6 +102,7 @@ class ActionsMixin:
             justify="left",
             anchor="w",
             wraplength=self._content_wraplength,
+            text_color=APP_MUTED,
         )
         info.pack(fill="x", pady=6)
         self.action_widgets.append(info)
@@ -254,7 +256,7 @@ class ActionsMixin:
             justify="left", anchor="w", wraplength=self._content_wraplength,
         )
         code_label.pack(anchor="w", pady=(0, 4))
-        code_entry = ctk.CTkEntry(self.action_frame, textvariable=self.battleship_room_code_var, width=200, fg_color=APP_ENTRY_BG, border_color=APP_BORDER, text_color=APP_TEXT)
+        code_entry = ctk.CTkEntry(self.action_frame, textvariable=self.battleship_room_code_var, width=200, **self._entry_style_kwargs())
         code_entry.pack(anchor="w", pady=(0, 14))
         self.speech.bind_focus(code_entry, "Room code field", "Enter or read out the room code.")
         self.action_widgets.append(code_entry)
@@ -439,7 +441,7 @@ class ActionsMixin:
             self._register_action_button(btn, f"Show scoreboard for {game_label}.")
 
         # Scrollable area where the ranked player rows are drawn.
-        self.sb_display_frame = ctk.CTkScrollableFrame(self.action_frame, fg_color=APP_BG, corner_radius=8)
+        self.sb_display_frame = ctk.CTkScrollableFrame(self.action_frame, fg_color=APP_PANEL, corner_radius=12, border_width=1, border_color=APP_BORDER)
         self.sb_display_frame.pack(fill="both", expand=True)
 
         self._add_action_button(
@@ -487,7 +489,7 @@ class ActionsMixin:
             self.speech.announce(f"No scores yet for {game_label}.", interrupt=True, force=True)
             return
 
-        header = ctk.CTkFrame(self.sb_display_frame, fg_color=APP_PANEL_ALT, corner_radius=6)
+        header = ctk.CTkFrame(self.sb_display_frame, fg_color=APP_PANEL_ALT, corner_radius=10, border_width=1, border_color=APP_BORDER)
         header.pack(fill="x", padx=4, pady=(0, 4))
         header.grid_columnconfigure(1, weight=1)
         for col, (text, width) in enumerate([("Rank", 50), ("Player", 0), ("Wins", 60)]):
@@ -500,7 +502,7 @@ class ActionsMixin:
         announce_lines = [f"{game_label} leaderboard."]
         for rank, row in enumerate(rows, start=1):
             bg = APP_ROW_HIGHLIGHT if rank == 1 else APP_PANEL
-            entry_frame = ctk.CTkFrame(self.sb_display_frame, fg_color=bg, corner_radius=6)
+            entry_frame = ctk.CTkFrame(self.sb_display_frame, fg_color=bg if rank == 1 else APP_PANEL_RAISED, corner_radius=10, border_width=1, border_color=APP_BORDER)
             entry_frame.pack(fill="x", padx=4, pady=2)
             entry_frame.grid_columnconfigure(1, weight=1)
 
