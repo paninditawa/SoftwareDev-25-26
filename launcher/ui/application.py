@@ -58,6 +58,7 @@ from launcher.ui.theme import (
     APP_TEXT,
     _font,
 )
+from launcher.services.chat_service import ChatService
 
 # project root is three levels up from this file (launcher/ui/application.py)
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -118,13 +119,19 @@ PAGE_META = {
         "view the Scoreboard",
         "scoreboard",
     ),
+    "chat": _simple_page(
+        "Chat",
+        "Community chat for all games - share tips, strategies, and connect with other players.",
+        "open the community chat",
+        "chat",
+    ),
     "account": _simple_page("Account", "Sign out of your account.", "manage your account", "account"),
 }
 
 # MENU_ORDER controls the order pages appear in the left-hand navigation list
 MENU_ORDER = [
     "home", "hangman", "maze", "madlibs", "escape",
-    "connect4", "apples", "battleship", "scoreboard", "account",
+    "connect4", "apples", "battleship", "scoreboard", "chat", "account",
 ]
 
 # SCOREBOARD_GAMES lists (page_key, display_label) pairs shown on the scoreboard page
@@ -260,6 +267,11 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
 
         # show the login screen as the first thing the user sees
         self.show_login()
+
+        # Initialize chat service
+        self.chat_service = ChatService.from_workspace(
+            Path(__file__).parent.parent, 
+            id_token=session.id_token if (session := self.auth_session) else "",)
 
     def _set_initial_window_size(self) -> None:
         # start with tkinter's reported screen dimensions as a fallback
