@@ -368,7 +368,7 @@ class LoginMixin:
         ca_tab_btn.bind("<Up>", lambda e: (self._move_to_login_focus(0), "break")[1], add="+")
 
         # Content area — one frame per tab, shown/hidden by _update_login_tab_display.
-        tab_content = ctk.CTkScrollableFrame(
+        tab_content = ctk.CTkFrame(
             card,
             fg_color="transparent",
             corner_radius=0,

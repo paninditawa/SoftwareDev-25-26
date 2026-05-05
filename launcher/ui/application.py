@@ -323,16 +323,10 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             except Exception:
                 pass
 
-        # calculate a window size that fills most of the screen, with minimum limits
-        width = max(720, min(screen_width - 40, int(screen_width * 0.96)))
-        height = max(560, min(screen_height - 60, int(screen_height * 0.94)))
-        min_width = min(960, width)
-        min_height = min(640, height)
-        # centre the window on the usable desktop area
-        x = origin_x + max(0, (screen_width - width) // 2)
-        y = origin_y + max(0, (screen_height - height) // 2)
+        min_width = min(960, screen_width)
+        min_height = min(640, screen_height)
 
-        self.geometry(f"{width}x{height}+{x}+{y}")
+        self.geometry(f"{screen_width}x{screen_height}+{origin_x}+{origin_y}")
         self.minsize(min_width, min_height)
 
     def _get_scoreboard(self) -> "Scoreboard | None":
