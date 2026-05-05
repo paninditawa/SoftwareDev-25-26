@@ -278,12 +278,12 @@ class NavigationMixin:
         root.grid_rowconfigure(0, weight=1)
 
         # Left navigation panel.
-        nav = ctk.CTkFrame(root, width=300, fg_color=APP_PANEL_ALT, corner_radius=14, border_width=1, border_color=APP_BORDER)
+        nav = ctk.CTkFrame(root, width=300, **self._surface_style_kwargs())
         nav.grid(row=0, column=0, sticky="nsw", padx=(16, 8), pady=16)
         nav.grid_propagate(False)
 
         # Right details panel.
-        details = ctk.CTkFrame(root, fg_color=APP_PANEL, corner_radius=14, border_width=2, border_color=APP_BORDER)
+        details = ctk.CTkFrame(root, fg_color=APP_PANEL, corner_radius=18, border_width=2, border_color=APP_BORDER)
         details.grid(row=0, column=1, sticky="nsew", padx=(8, 16), pady=16)
         details.grid_columnconfigure(0, weight=1)
         details.grid_rowconfigure(2, weight=1)
@@ -291,13 +291,20 @@ class NavigationMixin:
         # Welcome message at the top of the nav panel.
         mode_prefix = "Signed in as"
         display_name = self.auth_session.username or self.auth_session.email
-        welcome = ctk.CTkLabel(nav, text=f"{mode_prefix} {display_name}", wraplength=220, justify="left", text_color=APP_TEXT, font=_font(17, bold=True))
+        welcome = ctk.CTkLabel(nav, text=f"{mode_prefix} {display_name}", wraplength=220, justify="left", text_color=APP_TEXT, font=_font(18, bold=True))
         welcome.pack(anchor="w", padx=16, pady=(16, 10))
 
         # Short navigation hint beneath the welcome label.
         nav_text = "Use Up/Down arrows to change pages. Press Left/Right arrows to move between the page list and the details pane."
         self._nav_help_label = ctk.CTkLabel(nav, text=nav_text, justify="left", wraplength=220, text_color=APP_MUTED, font=_font(15, bold=True))
         self._nav_help_label.pack(anchor="w", padx=16, pady=(0, 12))
+
+        ctk.CTkLabel(
+            nav,
+            text="GAME SELECT",
+            text_color=APP_FOCUS,
+            font=_font(14, bold=True),
+        ).pack(anchor="w", padx=16, pady=(4, 8))
 
         # Create one nav button per page and register it in the nav_buttons dictionary.
         for key in self.menu_order:
@@ -309,14 +316,14 @@ class NavigationMixin:
             self.nav_buttons[key] = button
 
         # Page title and description labels inside the details pane.
-        self.detail_title = ctk.CTkLabel(details, text="", text_color=APP_TEXT, font=_font(26, bold=True))
+        self.detail_title = ctk.CTkLabel(details, text="", text_color=APP_TEXT, font=_font(28, bold=True))
         self.detail_title.grid(row=0, column=0, sticky="w", padx=24, pady=(24, 8))
 
         self.detail_body = ctk.CTkLabel(details, text="", wraplength=self._content_wraplength, justify="left", anchor="w", text_color=APP_MUTED, font=_font(16, bold=True))
         self.detail_body.grid(row=1, column=0, sticky="w", padx=24, pady=(0, 16))
 
         # Scrollable frame where game-specific action buttons and inputs are shown.
-        self.action_frame = ctk.CTkFrame(details)
+        self.action_frame = ctk.CTkScrollableFrame(details, fg_color=APP_PANEL_ALT, corner_radius=16, border_width=1, border_color=APP_BORDER)
         self.action_frame.grid(row=2, column=0, sticky="nsew", padx=24, pady=(0, 24))
         self.action_frame.grid_columnconfigure(0, weight=1)
 
