@@ -5,14 +5,22 @@ Includes keyboard navigation, screen reader announcements, and message updates.
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import ttk
-from typing import Callable
 
 import customtkinter as ctk
 
 from launcher.services.chat_service import ChatService
 from launcher.services.speech import SpeechManager
-from launcher.ui.theme import APP_BG, APP_PANEL, APP_TEXT, APP_ACCENT, _font
+from launcher.ui.theme import (
+    APP_ACCENT,
+    APP_BG,
+    APP_BORDER,
+    APP_BUTTON_TEXT,
+    APP_MUTED,
+    APP_PANEL,
+    APP_PANEL_ALT,
+    APP_TEXT,
+    _font,
+)
 
 
 class ChatPanel(ctk.CTkFrame):
@@ -44,24 +52,40 @@ class ChatPanel(ctk.CTkFrame):
         # Title with screen reader label
         title = ctk.CTkLabel(
             self,
-            text="Chat",
-            font=_font(20, "bold"),
+            text="Community Chat",
+            font=_font(24, True),
             text_color=APP_TEXT,
         )
-        title.pack(pady=10, padx=10, anchor="w")
+        title.pack(pady=(12, 6), padx=14, anchor="w")
+
+        subtitle = ctk.CTkLabel(
+            self,
+            text="A bright, easy-to-read space for players to talk strategy and say hello.",
+            font=_font(13),
+            text_color=APP_MUTED,
+            wraplength=640,
+            justify="left",
+        )
+        subtitle.pack(pady=(0, 10), padx=14, anchor="w")
 
         # Messages display area (read-only text widget for accessibility)
-        self.messages_frame = ctk.CTkFrame(self, fg_color=APP_PANEL)
-        self.messages_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        self.messages_frame = ctk.CTkFrame(
+            self,
+            fg_color=APP_PANEL_ALT,
+            corner_radius=18,
+            border_width=2,
+            border_color=APP_BORDER,
+        )
+        self.messages_frame.pack(fill="both", expand=True, padx=14, pady=(0, 8))
 
         # Scrollable messages container
         self.messages_canvas = ctk.CTkCanvas(
             self.messages_frame,
-            bg=APP_PANEL,
+            bg=APP_PANEL_ALT,
             highlightthickness=0,
-            height=200,
+            height=260,
         )
-        self.messages_canvas.pack(side="left", fill="both", expand=True)
+        self.messages_canvas.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=10)
 
         scrollbar = ctk.CTkScrollbar(
             self.messages_frame,
@@ -71,7 +95,7 @@ class ChatPanel(ctk.CTkFrame):
         self.messages_canvas.configure(yscrollcommand=scrollbar.set)
 
         # Inner frame for messages
-        self.messages_inner = ctk.CTkFrame(self.messages_canvas, fg_color=APP_PANEL)
+        self.messages_inner = ctk.CTkFrame(self.messages_canvas, fg_color=APP_PANEL_ALT)
         self.messages_canvas_window = self.messages_canvas.create_window(
             0, 0, window=self.messages_inner, anchor="nw"
         )
@@ -79,38 +103,54 @@ class ChatPanel(ctk.CTkFrame):
             "<Configure>",
             lambda e: self.messages_canvas.configure(scrollregion=self.messages_canvas.bbox("all")),
         )
+        self.messages_canvas.bind("<Configure>", self._resize_message_area)
 
         # Keyboard shortcut hint
         hint = ctk.CTkLabel(
             self,
             text="Tab to message input. Type message and press Enter to send. Press Ctrl+Q to close window. Press Ctrl+R to read chat messages.",
-            font=_font(10),
-            text_color=APP_TEXT,
-            wraplength=300,
+            font=_font(11),
+            text_color=APP_MUTED,
+            wraplength=660,
+            justify="left",
+            fg_color=APP_PANEL,
+            corner_radius=14,
+            padx=14,
+            pady=10,
         )
-        hint.pack(pady=5, padx=10, anchor="w")
+        hint.pack(fill="x", pady=(0, 10), padx=14, anchor="w")
 
         # Message input frame
-        input_frame = ctk.CTkFrame(self, fg_color=APP_BG)
-        input_frame.pack(fill="x", padx=10, pady=10)
+        input_frame = ctk.CTkFrame(
+            self,
+            fg_color=APP_PANEL,
+            corner_radius=18,
+            border_width=2,
+            border_color=APP_BORDER,
+        )
+        input_frame.pack(fill="x", padx=14, pady=(0, 14))
 
         self.input_field = ctk.CTkEntry(
             input_frame,
             placeholder_text="Type a message...",
-            font=_font(12),
+            font=_font(15),
+            height=46,
         )
-        self.input_field.pack(side="left", fill="both", expand=True, padx=(0, 5))
+        self.input_field.pack(side="left", fill="both", expand=True, padx=(12, 8), pady=12)
         self.input_field.bind("<Return>", self._on_send_message)
         self.input_field.bind("<Control-r>", lambda e: self._read_new_messages())  # Read new messages
         self._bind_entry_key_feedback(self.input_field)
 
-        send_btn = ctk.CTkButton(
+        self.send_btn = ctk.CTkButton(
             input_frame,
             text="Send",
             command=self._on_send_message,
-            width=80,
+            width=110,
+            height=46,
+            font=_font(15, True),
+            text_color=APP_BUTTON_TEXT,
         )
-        send_btn.pack(side="left")
+        self.send_btn.pack(side="left", padx=(0, 12), pady=12)
 
     def _on_send_message(self, event=None) -> str:
         """Handle message send."""
@@ -159,14 +199,19 @@ class ChatPanel(ctk.CTkFrame):
 
         new_message_count = 0
         if not messages:
-            ctk.CTkLabel(
+            empty_state = ctk.CTkLabel(
                 self.messages_inner,
                 text="No messages yet. Start the conversation or wait for others to join.",
-                font=_font(11),
+                font=_font(12),
                 text_color=APP_TEXT,
-                wraplength=250,
+                fg_color=APP_PANEL,
+                corner_radius=14,
+                padx=14,
+                pady=12,
+                wraplength=560,
                 justify="left",
-            ).pack(anchor="w", padx=5, pady=3, fill="x")
+            )
+            empty_state.pack(anchor="w", padx=8, pady=8, fill="x")
             self.last_message_ids.clear()
         else:
             for msg in messages:
@@ -178,16 +223,34 @@ class ChatPanel(ctk.CTkFrame):
                 content = msg.get("content", "")
                 is_own = msg.get("user_id") == self.user_id
 
-                # Create message widget
-                msg_label = ctk.CTkLabel(
+                bubble = ctk.CTkFrame(
                     self.messages_inner,
-                    text=f"{username}: {content}",
-                    font=_font(11),
-                    text_color=APP_ACCENT if is_own else APP_TEXT,
-                    wraplength=250,
-                    justify="left",
+                    fg_color=APP_PANEL if is_own else APP_BG,
+                    corner_radius=16,
+                    border_width=1,
+                    border_color=APP_ACCENT if is_own else APP_BORDER,
                 )
-                msg_label.pack(anchor="w", padx=5, pady=3, fill="x")
+                bubble.pack(anchor="w", padx=8, pady=6, fill="x")
+
+                speaker = ctk.CTkLabel(
+                    bubble,
+                    text=username,
+                    font=_font(13, True),
+                    text_color=APP_ACCENT if is_own else APP_TEXT,
+                    anchor="w",
+                )
+                speaker.pack(anchor="w", padx=12, pady=(10, 2))
+
+                msg_label = ctk.CTkLabel(
+                    bubble,
+                    text=content,
+                    font=_font(13),
+                    text_color=APP_TEXT,
+                    wraplength=560,
+                    justify="left",
+                    anchor="w",
+                )
+                msg_label.pack(anchor="w", padx=12, pady=(0, 10), fill="x")
 
             self.last_message_ids = {msg.get("id") for msg in messages if msg.get("id")}
 
@@ -206,6 +269,11 @@ class ChatPanel(ctk.CTkFrame):
 
         # Auto-scroll to bottom
         self.messages_canvas.yview_moveto(1.0)
+
+    def _resize_message_area(self, event) -> None:
+        """Keep the inner message column aligned with the canvas width."""
+        width = max(200, event.width - 6)
+        self.messages_canvas.itemconfigure(self.messages_canvas_window, width=width)
 
     def destroy(self) -> None:
         """Clean up polling when panel is destroyed."""
@@ -242,6 +310,22 @@ class ChatPanel(ctk.CTkFrame):
                 text = widget.cget("text")
                 if text:
                     messages.append(text)
+                continue
+
+            if isinstance(widget, ctk.CTkFrame):
+                speaker = ""
+                content_parts = []
+                for child in widget.winfo_children():
+                    if isinstance(child, ctk.CTkLabel):
+                        text = child.cget("text")
+                        if text:
+                            if not speaker:
+                                speaker = text
+                            else:
+                                content_parts.append(text)
+                if speaker:
+                    content = " ".join(content_parts).strip()
+                    messages.append(f"{speaker}: {content}" if content else speaker)
         if messages:
             self.speech_manager.announce("Chat messages: " + ". ".join(messages), interrupt=True, force=True)
         else:

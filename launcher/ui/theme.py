@@ -11,38 +11,38 @@ from __future__ import annotations
 import customtkinter as ctk
 
 # --- Background and panel colors ---
-APP_BG = "#eaf4ff"          # light sky backdrop for the full launcher
-APP_PANEL = "#ffffff"       # main panel surface
-APP_PANEL_ALT = "#dcecff"   # brighter panel used for sidebars and callouts
-APP_PANEL_RAISED = "#c8dcfb"  # raised cards and list rows
+APP_BG = "#f6f7ff"            # soft lavender-white backdrop for the full launcher
+APP_PANEL = "#fffdf8"         # warm bright panel surface
+APP_PANEL_ALT = "#e5f3ff"     # playful sky panel used for sidebars and callouts
+APP_PANEL_RAISED = "#fff1d6"  # raised cards and featured rows
 
 # --- Border and text colors ---
-APP_BORDER = "#55b7e8"      # bright blue outline used for frames and focus areas
-APP_TEXT = "#17324f"        # dark text for light surfaces
-APP_MUTED = "#47627f"       # softer body text
+APP_BORDER = "#4f8fd8"        # vivid blue outline used for frames and focus areas
+APP_TEXT = "#1c2d4a"          # dark text for light surfaces
+APP_MUTED = "#50637f"         # softer body text
 
 # --- Accent (interactive element) colors ---
-APP_ACCENT = "#ff5d8f"          # candy-pink primary accent
-APP_ACCENT_STRONG = "#ff7a45"   # orange hover / active accent
-APP_ACCENT_SOFT = "#9bc3ef"     # quieter accent for idle controls
-APP_ACCENT_GLOW = "#ffd166"     # gold used for fun highlights and badges
+APP_ACCENT = "#ff7a59"          # arcade coral primary accent
+APP_ACCENT_STRONG = "#ff9f43"   # sunny orange hover / active accent
+APP_ACCENT_SOFT = "#7cc7ff"     # lighter blue for idle controls
+APP_ACCENT_GLOW = "#ffd76a"     # gold used for highlights and badges
 
 # --- Keyboard focus indicator ---
-APP_FOCUS = "#ffe66d"       # bright yellow outline shown on the focused element
+APP_FOCUS = "#2457c5"         # strong blue outline shown on the focused element
 
 # --- Button-specific colors ---
 APP_BUTTON = APP_ACCENT             # default button fill
 APP_BUTTON_HOVER = APP_ACCENT_STRONG  # button fill when the mouse is over it
-APP_BUTTON_TEXT = "#fff8f1"         # warm white text on all buttons
+APP_BUTTON_TEXT = "#fffdf8"           # warm white text on all buttons
 
 # --- Entry field color ---
-APP_ENTRY_BG = "#f8fbff"    # light text-box background for contrast
+APP_ENTRY_BG = "#ffffff"      # light text-box background for contrast
 
 # --- Table / list row highlight ---
-APP_ROW_HIGHLIGHT = "#b9d7ff"  # cool blue used to highlight featured rows
+APP_ROW_HIGHLIGHT = "#ffe3a8"  # warm gold used to highlight featured rows
 
 # --- Fixed sizes ---
-APP_BUTTON_H = 46           # height in pixels for all standard buttons
+APP_BUTTON_H = 50             # height in pixels for all standard buttons
 APP_FONT_FAMILY = "Trebuchet MS"    # playful, readable font used throughout
 
 

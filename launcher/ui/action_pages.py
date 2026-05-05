@@ -79,7 +79,7 @@ class ActionsMixin:
     def _add_action_button(self, text: str, command, hint: str) -> ctk.CTkButton:
         # Create a full-width button, attach its speech hint, and add it to the action list.
         button = ctk.CTkButton(self.action_frame, text=text, command=command, **self._button_style_kwargs())
-        button.pack(fill="x", pady=6)
+        button.pack(fill="x", pady=7, padx=4)
         self.speech.bind_focus(button, text, hint)
         self._bind_tab_aliases(button)
         self.action_widgets.append(button)
@@ -103,8 +103,12 @@ class ActionsMixin:
             anchor="w",
             wraplength=self._content_wraplength,
             text_color=APP_MUTED,
+            fg_color=APP_PANEL,
+            corner_radius=14,
+            padx=16,
+            pady=12,
         )
-        info.pack(fill="x", pady=6)
+        info.pack(fill="x", pady=8, padx=4)
         self.action_widgets.append(info)
         self.action_buttons = []
 
@@ -189,8 +193,13 @@ class ActionsMixin:
             justify="left",
             anchor="w",
             wraplength=self._content_wraplength,
+            text_color=APP_TEXT,
+            fg_color=APP_PANEL,
+            corner_radius=14,
+            padx=16,
+            pady=12,
         )
-        info.pack(fill="x", pady=(0, 10))
+        info.pack(fill="x", pady=(4, 12), padx=4)
         self.action_widgets.append(info)
 
         open_chat_btn = ctk.CTkButton(
@@ -199,7 +208,7 @@ class ActionsMixin:
             command=self._open_chat_window,
             **self._button_style_kwargs()
         )
-        open_chat_btn.pack(pady=6)
+        open_chat_btn.pack(fill="x", pady=7, padx=4)
         self._register_action_button(open_chat_btn, "Activate to open the chat window.")
 
     def _open_chat_window(self) -> None:
@@ -210,7 +219,9 @@ class ActionsMixin:
 
         chat_window = ctk.CTkToplevel(self)
         chat_window.title("GameSpace Chat")
-        chat_window.geometry("600x400")
+        chat_window.geometry("760x560")
+        chat_window.minsize(640, 480)
+        chat_window.configure(fg_color=APP_BG)
         chat_window.resizable(True, True)
 
         # Create the chat panel in the window

@@ -257,11 +257,11 @@ class LoginMixin:
 
         # Center the card vertically inside the content area.
         wrapper = ctk.CTkFrame(self.content, fg_color="transparent")
-        wrapper.pack(expand=True)
+        wrapper.pack(fill="both", expand=True, padx=16, pady=16)
 
         # The card is a rounded rectangle that holds all the form elements.
         card = ctk.CTkFrame(wrapper, width=600, fg_color=APP_PANEL_ALT, corner_radius=20, border_width=2, border_color=APP_BORDER)
-        card.pack(padx=40, pady=40)
+        card.pack(fill="both", expand=True, padx=24, pady=24)
 
         title = ctk.CTkLabel(card, text="Enter the Arcade", text_color=APP_TEXT, font=_font(30, bold=True))
         title.pack(anchor="w", padx=24, pady=(24, 8))
@@ -368,8 +368,12 @@ class LoginMixin:
         ca_tab_btn.bind("<Up>", lambda e: (self._move_to_login_focus(0), "break")[1], add="+")
 
         # Content area — one frame per tab, shown/hidden by _update_login_tab_display.
-        tab_content = ctk.CTkFrame(card, fg_color="transparent")
-        tab_content.pack(fill="x", padx=24, pady=(0, 8))
+        tab_content = ctk.CTkScrollableFrame(
+            card,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+        tab_content.pack(fill="both", expand=True, padx=24, pady=(0, 8))
 
         # --- Sign In frame ---
         si_frame = ctk.CTkFrame(tab_content, fg_color="transparent")

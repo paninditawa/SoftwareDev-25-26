@@ -90,9 +90,12 @@ def _recommended_window_size(base_w: int, base_h: int) -> tuple[int, int]:
         if info.current_h > 0:
             screen_h = info.current_h
 
-    # Clamp size to fit screen
-    width = max(base_w, min(screen_w - 40, int(screen_w * 0.96)))
-    height = max(base_h, min(screen_h - 60, int(screen_h * 0.94)))
+    # Clamp size to fit the visible screen instead of forcing the base size.
+    # This keeps the full UI reachable on smaller laptop displays.
+    usable_w = min(screen_w - 40, int(screen_w * 0.96))
+    usable_h = min(screen_h - 60, int(screen_h * 0.94))
+    width = max(640, min(base_w, usable_w))
+    height = max(560, min(base_h, usable_h))
     return width, height
 
 # Generate a short beep sound (used when listening)
