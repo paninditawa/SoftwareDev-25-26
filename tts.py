@@ -28,6 +28,26 @@ from pathlib import Path
 _DEBUG = False  # Set to True to enable debug output
 
 # ---------------------------------------------------------------------------
+# Configurable speech rate (shared across backends)
+# SAPI range: -10 (slowest) to 10 (fastest), default 0
+# pyttsx3 uses words-per-minute mapped from the same -10..10 scale
+# ---------------------------------------------------------------------------
+_speech_rate: int = max(-10, min(10, int(os.getenv("HW_SPEECH_RATE", "0"))))
+
+
+def set_speech_rate(rate: int) -> None:
+    """Set the speech rate on a -10 to 10 scale (0 = normal)."""
+    global _speech_rate
+    _speech_rate = max(-10, min(10, rate))
+    os.environ["HW_SPEECH_RATE"] = str(_speech_rate)
+
+
+def get_speech_rate() -> int:
+    """Return the current speech rate (-10 to 10)."""
+    return _speech_rate
+
+
+# ---------------------------------------------------------------------------
 # Cache directory for gTTS audio files
 # ---------------------------------------------------------------------------
 _CACHE_DIR = Path(tempfile.gettempdir()) / "gamespace_tts_cache"
@@ -191,6 +211,7 @@ def _say_sapi(text: str, interrupt: bool = False) -> bool:
         if voice is None:
             return False
 
+        voice.Rate = _speech_rate
         flags = 1 | (2 if interrupt else 0)
         _dbg(f"SAPI speak ({'interrupt' if interrupt else 'normal'}): {text}")
         voice.Speak(text, flags)
@@ -206,6 +227,9 @@ def _say_pyttsx3(text: str, interrupt: bool = False) -> bool:
         return False
 
     try:
+        # Map -10..10 scale to words-per-minute (100..300, 200 = normal)
+        wpm = 200 + (_speech_rate * 10)
+        engine.setProperty('rate', wpm)
         if interrupt:
             try:
                 _dbg("pyttsx3 interrupt")
@@ -246,10 +270,10 @@ def speak(text: str) -> None:
         if _say_pyttsx3(text, interrupt=False):
             return
     else:
-        # Natural voice first, then offline fallbacks
-        if _say_gtts(text, interrupt=False):
-            return
+        # SAPI first on Windows (supports speed control), then gTTS, then fallbacks
         if sys.platform.startswith("win") and _say_sapi(text, interrupt=False):
+            return
+        if _say_gtts(text, interrupt=False):
             return
         if _say_pyttsx3(text, interrupt=False):
             return
@@ -268,10 +292,10 @@ def speak_blocking(text: str) -> None:
         if _say_pyttsx3(text, interrupt=False):
             return
     else:
+        if sys.platform.startswith("win") and _say_sapi(text, interrupt=False):
+            return
         if _say_gtts(text, interrupt=False):
             _wait_for_gtts_playback()
-            return
-        if sys.platform.startswith("win") and _say_sapi(text, interrupt=False):
             return
         if _say_pyttsx3(text, interrupt=False):
             return
@@ -316,9 +340,9 @@ def speak_interrupt(text: str) -> None:
         if _say_pyttsx3(text, interrupt=True):
             return
     else:
-        if _say_gtts(text, interrupt=True):
-            return
         if sys.platform.startswith("win") and _say_sapi(text, interrupt=True):
+            return
+        if _say_gtts(text, interrupt=True):
             return
         if _say_pyttsx3(text, interrupt=True):
             return

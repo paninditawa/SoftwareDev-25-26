@@ -35,6 +35,8 @@ from launcher.ui.theme import (
     APP_TEXT,
     _font,
 )
+# Chat panel for community messaging
+from launcher.ui.chat_panel import ChatPanel
 
 
 # All action-area helpers live inside this mixin class.
@@ -51,6 +53,27 @@ class ActionsMixin:
         self.action_widgets = []
         self.action_buttons = []
         self.action_index = 0
+
+    def _bind_entry_key_feedback(self, entry: ctk.CTkEntry) -> None:
+        """Speak each character as it is typed (screen-reader-style feedback)."""
+        def _on_key(event) -> None:
+            keysym = event.keysym
+            if keysym == "BackSpace":
+                self.speech.announce("backspace", interrupt=True, force=True)
+            elif (
+                event.char
+                and event.char.isprintable()
+                and not keysym.startswith(("Control", "Alt", "Shift", "caps_lock"))
+            ):
+                char_names = {
+                    ".": "dot", "@": "at", "-": "dash", "_": "underscore",
+                    "!": "exclamation", "#": "hash", "$": "dollar",
+                    "%": "percent", "&": "and", "+": "plus", "=": "equals",
+                    " ": "space",
+                }
+                spoken = char_names.get(event.char, event.char)
+                self.speech.announce(spoken, interrupt=True, force=True)
+        entry.bind("<Key>", _on_key, add="+")
 
     def _add_action_button(self, text: str, command, hint: str) -> ctk.CTkButton:
         # Create a full-width button, attach its speech hint, and add it to the action list.
@@ -118,9 +141,10 @@ class ActionsMixin:
             "Escape Room, a fully voice-activated puzzle adventure. "
             "Connect 4, a two-player strategy game with spoken move announcements. "
             "Apples to Apples, a word-matching card game. "
-            "And Battleship, a classic grid-based naval strategy game. "
-            "Use Up and Down arrows to browse the game list on the left, "
-            "then press Right Arrow or Enter to launch a game.",
+            "Battleship, a classic grid-based naval strategy game. "
+            "And a community chat feature to connect with other players. "
+            "Use Up and Down arrows to browse the game list and features on the left, "
+            "then press Right Arrow or Enter to launch a game or access a feature.",
             interrupt=True,
             force=True,
         )
@@ -152,6 +176,58 @@ class ActionsMixin:
         # Account page has a single Sign Out button.
         self._add_action_button("Sign Out", self._sign_out, "Press Enter to sign out and return to the login screen.")
 
+    def _render_chat_actions(self) -> None:
+        # Chat page: button to open chat in a separate window
+        if not self.auth_session:
+            self._show_action_info("Please sign in to access the community chat.")
+            return
+        info = ctk.CTkLabel(
+            self.action_frame,
+            text="Open a separate window for real-time chat with other players.",
+            justify="left",
+            anchor="w",
+            wraplength=self._content_wraplength,
+        )
+        info.pack(fill="x", pady=(0, 10))
+        self.action_widgets.append(info)
+
+        open_chat_btn = ctk.CTkButton(
+            self.action_frame,
+            text="Open Chat Window",
+            command=self._open_chat_window,
+            **self._button_style_kwargs()
+        )
+        open_chat_btn.pack(pady=6)
+        self._register_action_button(open_chat_btn, "Activate to open the chat window.")
+
+    def _open_chat_window(self) -> None:
+        # Open chat in a separate window
+        if not self.auth_session:
+            self.speech.announce("Please sign in to access chat.", interrupt=True, force=True)
+            return
+
+        chat_window = ctk.CTkToplevel(self)
+        chat_window.title("GameSpace Chat")
+        chat_window.geometry("600x400")
+        chat_window.resizable(True, True)
+
+        # Create the chat panel in the window
+        chat_panel = ChatPanel(
+            chat_window,
+            self.chat_service,
+            self.speech,
+            self.auth_session.local_id,
+            self.auth_session.username or self.auth_session.email,
+            "general",
+        )
+        chat_panel.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Bind Ctrl+Q to close the window
+        chat_window.bind("<Control-q>", lambda e: chat_window.destroy())
+        chat_window.focus_set()
+
+        self.speech.announce("Chat window opened. Press Ctrl+Q to close.", interrupt=True, force=True)
+
     def _render_actions(self, page_key: str) -> None:
         # Called every time the user switches pages; wipes the old panel and draws the new one.
         self._clear_actions()
@@ -164,6 +240,7 @@ class ActionsMixin:
             "battleship": self._render_battleship_actions,
             "scoreboard": self._render_scoreboard_actions,
             "account": self._render_account_actions,
+            "chat": self._render_chat_actions,
         }
         renderer = renderers.get(kind)
         if renderer is not None:
@@ -197,6 +274,11 @@ class ActionsMixin:
             "Stop Game",
             self._stop_battleship_server,
             "Stops the running game server.",
+        )
+        self._add_action_button(
+            "Read Room Code",
+            self._read_room_code,
+            "Press to hear the current room code read aloud.",
         )
 
         # Small informational label showing the host and port the server will use.
@@ -259,6 +341,9 @@ class ActionsMixin:
         user_id = self.auth_session.local_id if self.auth_session else ""
         username = (self.auth_session.username or self.auth_session.email) if self.auth_session else "Guest"
 
+        import os
+        env = os.environ.copy()
+
         # Launch client directly with Python, not through the launcher.
         subprocess.Popen(
             [
@@ -269,6 +354,7 @@ class ActionsMixin:
                 "--launcher-pid", str(subprocess.os.getpid()),
             ],
             cwd=str(self.battleship_dir),
+            env=env,
         )
         action = "Hosting" if is_host else "Joining"
         self.speech.announce(f"{action} Battleship game.", interrupt=True, force=True)
@@ -314,6 +400,14 @@ class ActionsMixin:
         self.server_process.terminate()
         self.server_process = None
         self.speech.announce("Game stopped.", interrupt=True, force=True)
+
+    def _read_room_code(self) -> None:
+        code = self.battleship_room_code_var.get().strip()
+        if not code:
+            self.speech.announce("No room code yet. Host a game first.", interrupt=True, force=True)
+            return
+        spelled = " ".join(code)
+        self.speech.announce(f"Room code is {spelled}.", interrupt=True, force=True)
 
     def _render_scoreboard_actions(self) -> None:
         # Scoreboard panel: first check if Supabase is available, then build game-picker buttons.

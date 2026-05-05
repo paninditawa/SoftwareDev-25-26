@@ -57,9 +57,12 @@ for _parent in _this_file.parents:
 # Error will be thrown if it is not available, though the game will still run
 try:
     from tts import speak as _tts_speak
+    from tts import speak_interrupt as _tts_speak_interrupt
 except ImportError:
     def _tts_speak(text: str):
         # Display the error message if tts helper is not available
+        print(text)
+    def _tts_speak_interrupt(text: str):
         print(text)
 
 # Audio constants
@@ -114,23 +117,29 @@ class SpeechEngine:
 
     def _worker(self):
         while True:
-            text = self._q.get()
-            if text is None:
+            item = self._q.get()
+            if item is None:
                 break
+            text, interrupt = item
             try:
-                _tts_speak(text)
+                if interrupt:
+                    _tts_speak_interrupt(text)
+                else:
+                    _tts_speak(text)
             except Exception as e:
                 print(f"TTS error: {e}")
 
     def speak(self, text, interrupt=False):
-        """Queue speech; if interrupt=True, discard pending items first."""
+        """Queue speech; if interrupt=True, discard pending items and cut off current speech."""
         if interrupt:
             while not self._q.empty():
                 try:
                     self._q.get_nowait()
                 except queue.Empty:
                     break
-        self._q.put(text)
+            self._q.put((text, True))
+        else:
+            self._q.put((text, False))
 
     def stop(self):
         self._q.put(None)

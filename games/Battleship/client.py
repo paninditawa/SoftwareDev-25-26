@@ -263,11 +263,11 @@ def listen_server() -> None:
 
                     if cmd == "START":
                         phase = "battle"
-                        speak("Game on.")
+                        speak_interrupt("Game on.")
 
                     elif cmd == "YOUR_TURN":
                         my_turn = True
-                        speak("Your turn.")
+                        speak_interrupt("Your turn.")
 
                     elif cmd == "OPPONENT_TURN":
                         my_turn = False
@@ -275,7 +275,7 @@ def listen_server() -> None:
                     elif cmd == "READY_OK":
                         ready = True
                         phase = "waiting"
-                        speak("Ready. Waiting for opponent.")
+                        speak_interrupt("Ready. Waiting for opponent.")
 
                     elif cmd == "OPPONENT_READY":
                         opponent_ready = True
@@ -296,7 +296,7 @@ def listen_server() -> None:
                         _place_ok_count = 0
                         _layout = _make_random_layout()
                         _sync_cursor_to_ship()
-                        speak("New game. Arrow keys to adjust ships, Enter to confirm each one.")
+                        speak_interrupt("New game. Arrow keys to adjust ships, Enter to confirm each one.")
 
                     elif cmd == "PLACE_OK":
                         _place_ok_count += 1
@@ -311,7 +311,7 @@ def listen_server() -> None:
                             placed_count = pending_index
                         awaiting_place_response = False
                         pending_index = pending_row = pending_col = pending_orient = None
-                        speak("Can't place there. Move the ship and try again.")
+                        speak_interrupt("Can't place there. Move the ship and try again.")
 
                     elif cmd == "RESULT":
                         sub = parts[1] if len(parts) > 1 else ""
@@ -331,13 +331,13 @@ def listen_server() -> None:
                             game_over_message = "You win!"
                             phase = "game_over"
                             SND_WIN.play()
-                            speak("You win!")
+                            speak_interrupt("You win!")
                             threading.Thread(target=report_win, daemon=True).start()
                         elif sub == "LOSE":
                             game_over_message = "You lose."
                             phase = "game_over"
                             SND_LOSE.play()
-                            speak("You lose.")
+                            speak_interrupt("You lose.")
 
                     elif cmd == "OPPONENT_FIRE":
                         r, c = int(parts[1]), int(parts[2])
@@ -475,7 +475,7 @@ def main() -> None:
     except Exception:
         player_id = 0
 
-    speak(f"Connected as player {player_id + 1}. Arrow keys to adjust each ship, J to rotate, Enter to confirm.")
+    speak_interrupt(f"Connected as player {player_id + 1}. Arrow keys to adjust each ship, J to rotate, Enter to confirm.")
 
     # game state
     phase = "placement"
@@ -557,6 +557,13 @@ def main() -> None:
 
             key = event.key
 
+            # Escape exits immediately regardless of game phase
+            if key == pygame.K_ESCAPE:
+                send_line("QUIT")
+                speak_interrupt("Leaving game.")
+                running = False
+                break
+
             # arrow key movement
             dr = dc = 0
             if key == pygame.K_UP: dr = -1
@@ -594,10 +601,10 @@ def main() -> None:
                     else:
                         selected_row = min(selected_row, BOARD_SIZE - length)
                     _layout[placed_count] = (selected_row, selected_col, orientation)
-                    speak(f"Rotated to {orientation}")
+                    speak_interrupt(f"Rotated to {orientation}")
                 elif phase == "game_over":
                     send_line("REMATCH")
-                    speak("Rematch requested.")
+                    speak_interrupt("Rematch requested.")
 
             elif key in (pygame.K_RETURN, pygame.K_SPACE):
                 if phase == "placement" and not awaiting_place_response and placed_count < len(SHIP_ORDER):
@@ -611,22 +618,18 @@ def main() -> None:
                         awaiting_place_response = True
                         last_place_time = time.time()
                         name, _ = SHIP_ORDER[pending_index]
-                        speak(f"{name} confirmed.")
+                        speak_interrupt(f"{name} confirmed.")
                         if placed_count < len(SHIP_ORDER):
                             _sync_cursor_to_ship()
                     else:
                         SND_BAD.play()
-                        speak("Can't place there.")
+                        speak_interrupt("Can't place there.")
                 elif phase == "placement" and placed_count >= len(SHIP_ORDER) and not ready:
                     send_line("READY")
-                    speak("Ready. Waiting for opponent.")
+                    speak_interrupt("Ready. Waiting for opponent.")
                 elif phase == "battle" and my_turn:
                     send_line(f"FIRE {selected_row} {selected_col}")
-                    speak(f"Firing row {selected_row + 1}, {chr(ord('A') + selected_col)}.")
-
-            elif key == pygame.K_ESCAPE and phase == "game_over":
-                send_line("QUIT")
-                running = False
+                    speak_interrupt(f"Firing row {selected_row + 1}, {chr(ord('A') + selected_col)}.")
 
     pygame.quit()
     try:
