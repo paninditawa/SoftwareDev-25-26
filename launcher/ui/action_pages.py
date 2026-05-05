@@ -31,10 +31,13 @@ from launcher.ui.theme import (
     APP_MUTED,
     APP_PANEL,
     APP_PANEL_ALT,
+    APP_PANEL_RAISED,
     APP_ROW_HIGHLIGHT,
     APP_TEXT,
     _font,
 )
+# Chat panel for community messaging
+from launcher.ui.chat_panel import ChatPanel
 
 
 # All action-area helpers live inside this mixin class.
@@ -52,10 +55,31 @@ class ActionsMixin:
         self.action_buttons = []
         self.action_index = 0
 
+    def _bind_entry_key_feedback(self, entry: ctk.CTkEntry) -> None:
+        """Speak each character as it is typed (screen-reader-style feedback)."""
+        def _on_key(event) -> None:
+            keysym = event.keysym
+            if keysym == "BackSpace":
+                self.speech.announce("backspace", interrupt=True, force=True)
+            elif (
+                event.char
+                and event.char.isprintable()
+                and not keysym.startswith(("Control", "Alt", "Shift", "caps_lock"))
+            ):
+                char_names = {
+                    ".": "dot", "@": "at", "-": "dash", "_": "underscore",
+                    "!": "exclamation", "#": "hash", "$": "dollar",
+                    "%": "percent", "&": "and", "+": "plus", "=": "equals",
+                    " ": "space",
+                }
+                spoken = char_names.get(event.char, event.char)
+                self.speech.announce(spoken, interrupt=True, force=True)
+        entry.bind("<Key>", _on_key, add="+")
+
     def _add_action_button(self, text: str, command, hint: str) -> ctk.CTkButton:
         # Create a full-width button, attach its speech hint, and add it to the action list.
         button = ctk.CTkButton(self.action_frame, text=text, command=command, **self._button_style_kwargs())
-        button.pack(fill="x", pady=6)
+        button.pack(fill="x", pady=7, padx=4)
         self.speech.bind_focus(button, text, hint)
         self._bind_tab_aliases(button)
         self.action_widgets.append(button)
@@ -78,8 +102,13 @@ class ActionsMixin:
             justify="left",
             anchor="w",
             wraplength=self._content_wraplength,
+            text_color=APP_MUTED,
+            fg_color=APP_PANEL,
+            corner_radius=14,
+            padx=16,
+            pady=12,
         )
-        info.pack(fill="x", pady=6)
+        info.pack(fill="x", pady=8, padx=4)
         self.action_widgets.append(info)
         self.action_buttons = []
 
@@ -118,9 +147,10 @@ class ActionsMixin:
             "Escape Room, a fully voice-activated puzzle adventure. "
             "Connect 4, a two-player strategy game with spoken move announcements. "
             "Apples to Apples, a word-matching card game. "
-            "And Battleship, a classic grid-based naval strategy game. "
-            "Use Up and Down arrows to browse the game list on the left, "
-            "then press Right Arrow or Enter to launch a game.",
+            "Battleship, a classic grid-based naval strategy game. "
+            "And a community chat feature to connect with other players. "
+            "Use Up and Down arrows to browse the game list and features on the left, "
+            "then press Right Arrow or Enter to launch a game or access a feature.",
             interrupt=True,
             force=True,
         )
@@ -152,6 +182,65 @@ class ActionsMixin:
         # Account page has a single Sign Out button.
         self._add_action_button("Sign Out", self._sign_out, "Press Enter to sign out and return to the login screen.")
 
+    def _render_chat_actions(self) -> None:
+        # Chat page: button to open chat in a separate window
+        if not self.auth_session:
+            self._show_action_info("Please sign in to access the community chat.")
+            return
+        info = ctk.CTkLabel(
+            self.action_frame,
+            text="Open a separate window for real-time chat with other players.",
+            justify="left",
+            anchor="w",
+            wraplength=self._content_wraplength,
+            text_color=APP_TEXT,
+            fg_color=APP_PANEL,
+            corner_radius=14,
+            padx=16,
+            pady=12,
+        )
+        info.pack(fill="x", pady=(4, 12), padx=4)
+        self.action_widgets.append(info)
+
+        open_chat_btn = ctk.CTkButton(
+            self.action_frame,
+            text="Open Chat Window",
+            command=self._open_chat_window,
+            **self._button_style_kwargs()
+        )
+        open_chat_btn.pack(fill="x", pady=7, padx=4)
+        self._register_action_button(open_chat_btn, "Activate to open the chat window.")
+
+    def _open_chat_window(self) -> None:
+        # Open chat in a separate window
+        if not self.auth_session:
+            self.speech.announce("Please sign in to access chat.", interrupt=True, force=True)
+            return
+
+        chat_window = ctk.CTkToplevel(self)
+        chat_window.title("GameSpace Chat")
+        chat_window.geometry("760x560")
+        chat_window.minsize(640, 480)
+        chat_window.configure(fg_color=APP_BG)
+        chat_window.resizable(True, True)
+
+        # Create the chat panel in the window
+        chat_panel = ChatPanel(
+            chat_window,
+            self.chat_service,
+            self.speech,
+            self.auth_session.local_id,
+            self.auth_session.username or self.auth_session.email,
+            "general",
+        )
+        chat_panel.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Bind Ctrl+Q to close the window
+        chat_window.bind("<Control-q>", lambda e: chat_window.destroy())
+        chat_window.focus_set()
+
+        self.speech.announce("Chat window opened. Press Ctrl+Q to close.", interrupt=True, force=True)
+
     def _render_actions(self, page_key: str) -> None:
         # Called every time the user switches pages; wipes the old panel and draws the new one.
         self._clear_actions()
@@ -164,6 +253,7 @@ class ActionsMixin:
             "battleship": self._render_battleship_actions,
             "scoreboard": self._render_scoreboard_actions,
             "account": self._render_account_actions,
+            "chat": self._render_chat_actions,
         }
         renderer = renderers.get(kind)
         if renderer is not None:
@@ -177,7 +267,7 @@ class ActionsMixin:
             justify="left", anchor="w", wraplength=self._content_wraplength,
         )
         code_label.pack(anchor="w", pady=(0, 4))
-        code_entry = ctk.CTkEntry(self.action_frame, textvariable=self.battleship_room_code_var, width=200, fg_color=APP_ENTRY_BG, border_color=APP_BORDER, text_color=APP_TEXT)
+        code_entry = ctk.CTkEntry(self.action_frame, textvariable=self.battleship_room_code_var, width=200, **self._entry_style_kwargs())
         code_entry.pack(anchor="w", pady=(0, 14))
         self.speech.bind_focus(code_entry, "Room code field", "Enter or read out the room code.")
         self.action_widgets.append(code_entry)
@@ -362,7 +452,7 @@ class ActionsMixin:
             self._register_action_button(btn, f"Show scoreboard for {game_label}.")
 
         # Scrollable area where the ranked player rows are drawn.
-        self.sb_display_frame = ctk.CTkScrollableFrame(self.action_frame, fg_color=APP_BG, corner_radius=8)
+        self.sb_display_frame = ctk.CTkScrollableFrame(self.action_frame, fg_color=APP_PANEL, corner_radius=12, border_width=1, border_color=APP_BORDER)
         self.sb_display_frame.pack(fill="both", expand=True)
 
         self._add_action_button(
@@ -410,7 +500,7 @@ class ActionsMixin:
             self.speech.announce(f"No scores yet for {game_label}.", interrupt=True, force=True)
             return
 
-        header = ctk.CTkFrame(self.sb_display_frame, fg_color=APP_PANEL_ALT, corner_radius=6)
+        header = ctk.CTkFrame(self.sb_display_frame, fg_color=APP_PANEL_ALT, corner_radius=10, border_width=1, border_color=APP_BORDER)
         header.pack(fill="x", padx=4, pady=(0, 4))
         header.grid_columnconfigure(1, weight=1)
         for col, (text, width) in enumerate([("Rank", 50), ("Player", 0), ("Wins", 60)]):
@@ -423,7 +513,7 @@ class ActionsMixin:
         announce_lines = [f"{game_label} leaderboard."]
         for rank, row in enumerate(rows, start=1):
             bg = APP_ROW_HIGHLIGHT if rank == 1 else APP_PANEL
-            entry_frame = ctk.CTkFrame(self.sb_display_frame, fg_color=bg, corner_radius=6)
+            entry_frame = ctk.CTkFrame(self.sb_display_frame, fg_color=bg if rank == 1 else APP_PANEL_RAISED, corner_radius=10, border_width=1, border_color=APP_BORDER)
             entry_frame.pack(fill="x", padx=4, pady=2)
             entry_frame.grid_columnconfigure(1, weight=1)
 

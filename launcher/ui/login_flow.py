@@ -22,6 +22,7 @@ import customtkinter as ctk
 from launcher.services.auth_client import AuthError
 # Color constants and font helper
 from launcher.ui.theme import (
+    APP_ACCENT,
     APP_BORDER,
     APP_BUTTON,
     APP_BUTTON_H,
@@ -31,6 +32,7 @@ from launcher.ui.theme import (
     APP_FOCUS,
     APP_MUTED,
     APP_PANEL,
+    APP_PANEL_ALT,
     APP_TEXT,
     _font,
 )
@@ -207,9 +209,9 @@ class LoginMixin:
         # Style the tab buttons and show only the active tab's content frame.
         for name, btn in self._tab_buttons.items():
             if name == self._active_login_tab:
-                btn.configure(fg_color="#1565C0", text_color="#ffffff", border_width=3, border_color="#1565C0")
+                btn.configure(fg_color=APP_ACCENT, text_color=APP_BUTTON_TEXT, border_width=3, border_color=APP_FOCUS)
             else:
-                btn.configure(fg_color="#DCE9F9", text_color="#0f2942", border_width=1, border_color="#4A90E2")
+                btn.configure(fg_color=APP_PANEL, text_color=APP_MUTED, border_width=2, border_color=APP_BORDER)
         for name, frame in self._tab_frames.items():
             if name == self._active_login_tab:
                 frame.pack(fill="both", expand=True, pady=(8, 0))
@@ -255,19 +257,19 @@ class LoginMixin:
 
         # Center the card vertically inside the content area.
         wrapper = ctk.CTkFrame(self.content, fg_color="transparent")
-        wrapper.pack(expand=True)
+        wrapper.pack(fill="both", expand=True, padx=16, pady=16)
 
         # The card is a rounded rectangle that holds all the form elements.
-        card = ctk.CTkFrame(wrapper, width=560, fg_color=APP_PANEL, corner_radius=14, border_width=2, border_color=APP_BORDER)
-        card.pack(padx=40, pady=40)
+        card = ctk.CTkFrame(wrapper, width=600, fg_color=APP_PANEL_ALT, corner_radius=20, border_width=2, border_color=APP_BORDER)
+        card.pack(fill="both", expand=True, padx=24, pady=24)
 
-        title = ctk.CTkLabel(card, text="Sign In to HelloWorld GameSpace", text_color=APP_TEXT, font=_font(28, bold=True))
+        title = ctk.CTkLabel(card, text="Enter the Arcade", text_color=APP_TEXT, font=_font(30, bold=True))
         title.pack(anchor="w", padx=24, pady=(24, 8))
 
         # Brief navigation hint for blind users.
         summary = ctk.CTkLabel(
             card,
-            text="Use Up and Down arrows to move between fields and buttons. Switch tabs to sign in or create a new account.",
+            text="Use Up and Down arrows to move between fields and buttons. Switch tabs to sign in or create a new player account.",
             wraplength=460,
             justify="left",
             anchor="w",
@@ -334,6 +336,7 @@ class LoginMixin:
         si_tab_btn = ctk.CTkButton(
             tab_row, text="Sign In", height=48, font=_font(17, bold=True),
             command=lambda: self._switch_login_tab("Sign In"),
+            corner_radius=14,
         )
         si_tab_btn.grid(row=0, column=0, sticky="ew", padx=(0, 4))
         self._tab_buttons["Sign In"] = si_tab_btn
@@ -350,6 +353,7 @@ class LoginMixin:
         ca_tab_btn = ctk.CTkButton(
             tab_row, text="Create Account", height=48, font=_font(17, bold=True),
             command=lambda: self._switch_login_tab("Create Account"),
+            corner_radius=14,
         )
         ca_tab_btn.grid(row=0, column=1, sticky="ew", padx=(4, 0))
         self._tab_buttons["Create Account"] = ca_tab_btn
@@ -364,8 +368,12 @@ class LoginMixin:
         ca_tab_btn.bind("<Up>", lambda e: (self._move_to_login_focus(0), "break")[1], add="+")
 
         # Content area — one frame per tab, shown/hidden by _update_login_tab_display.
-        tab_content = ctk.CTkFrame(card, fg_color="transparent")
-        tab_content.pack(fill="x", padx=24, pady=(0, 8))
+        tab_content = ctk.CTkScrollableFrame(
+            card,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+        tab_content.pack(fill="both", expand=True, padx=24, pady=(0, 8))
 
         # --- Sign In frame ---
         si_frame = ctk.CTkFrame(tab_content, fg_color="transparent")
@@ -380,11 +388,8 @@ class LoginMixin:
                 si_frame,
                 textvariable=var,
                 width=460,
-                height=42,
                 show=show,
-                fg_color="#ffffff",
-                border_color="#4A90E2",
-                text_color=APP_TEXT,
+                **self._entry_style_kwargs(),
             )
             entry.pack(pady=(4, 12), fill="x")
             self.speech.bind_focus(entry, f"{label_text} field", hint)
@@ -409,11 +414,8 @@ class LoginMixin:
                 ca_frame,
                 textvariable=var,
                 width=460,
-                height=42,
                 show=show,
-                fg_color="#ffffff",
-                border_color="#4A90E2",
-                text_color=APP_TEXT,
+                **self._entry_style_kwargs(),
             )
             entry.pack(pady=(4, 12), fill="x")
             self.speech.bind_focus(entry, f"{label_text} field", hint)

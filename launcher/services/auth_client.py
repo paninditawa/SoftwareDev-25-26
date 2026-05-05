@@ -18,6 +18,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from supabase_project import SUPABASE_URL, SUPABASE_ANON_KEY
 
 # requests is used to call the Supabase REST API endpoints.
 import requests
@@ -79,9 +80,7 @@ def _is_usable_url(value: str | None) -> bool:
     if not normalized:
         return False
     placeholders = (
-        "REPLACE_WITH_SUPABASE_URL",
-        "YOUR_SUPABASE_URL",
-        "https://YOUR-PROJECT-REF.supabase.co",
+        "SUPABASE_URL"
     )
     if normalized in placeholders:
         return False
@@ -96,8 +95,7 @@ def _is_usable_supabase_key(value: str | None) -> bool:
     if not normalized:
         return False
     placeholders = (
-        "REPLACE_WITH_SUPABASE_ANON_KEY",
-        "YOUR_SUPABASE_ANON_KEY",
+        "SUPABASE_ANON_KEY"
     )
     return normalized not in placeholders
 
