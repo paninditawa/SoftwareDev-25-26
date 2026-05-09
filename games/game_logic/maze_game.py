@@ -68,14 +68,17 @@ except ImportError:
 # Audio constants
 SAMPLE_RATE = 44100  # sample_rate is samples per second used
 
-# Color configurations
-WHITE  = (255, 255, 255)
-BLACK  = (0,   0,   0)
-BLUE   = (14,  92, 168)
-GREEN  = (0,  126, 106)
-YELLOW = (255, 191,  71)
-GRAY   = (208, 218, 230)
-DARK   = (18,   24,  33)
+# Color configurations matched to the launcher theme
+BG_COLOR      = (246, 247, 255)  # APP_BG
+FLOOR_COLOR   = (255, 253, 248)  # APP_PANEL
+WALL_COLOR    = (28, 45, 74)     # APP_PANEL_ALT
+TEXT_COLOR    = (28, 45, 74)     # APP_TEXT
+MUTED_COLOR   = (0, 0, 0)    # APP_MUTED
+ACCENT_COLOR  = (0, 0, 0)   # APP_ACCENT
+ACCENT_STRONG = (0, 0, 0)   # APP_ACCENT_STRONG
+EXIT_COLOR    = (255, 215, 106)  # APP_ACCENT_GLOW
+PLAYER_COLOR  = (79, 143, 216)   # blue player marker
+WIN_TEXT_COLOR = (187, 222, 251)  # light blue win text
 
 # Screen size configurations; adjustable
 SCREEN_W, SCREEN_H = 820, 720
@@ -269,16 +272,16 @@ class SizeSelectScreen:
             self.done = True
 
     def draw(self):
-        self.screen.fill(DARK)
+        self.screen.fill(BG_COLOR)
         w = self.screen.get_width()
 
-        title = self.big.render("Accessible Maze", True, YELLOW)
+        title = self.big.render("Accessible Maze", True, ACCENT_COLOR)
         self.screen.blit(title, (w//2 - title.get_width()//2, 80))
 
-        sub = self.font.render("A game for the visually impaired", True, WHITE)
+        sub = self.font.render("A game for the visually impaired", True, TEXT_COLOR)
         self.screen.blit(sub, (w//2 - sub.get_width()//2, 155))
 
-        size_txt = self.big.render(f"Size: {self.size} x {self.size}", True, GREEN)
+        size_txt = self.big.render(f"Size: {self.size} x {self.size}", True, ACCENT_STRONG)
         self.screen.blit(size_txt, (w//2 - size_txt.get_width()//2, 240))
 
         lines = [
@@ -299,7 +302,7 @@ class SizeSelectScreen:
             "SPACE      — return to this menu",
         ]
         for i, line in enumerate(lines):
-            surf = self.small.render(line, True, WHITE if line else DARK)
+            surf = self.small.render(line, True, TEXT_COLOR if line else BG_COLOR)
             self.screen.blit(surf, (w//2 - 180, 340 + i * 32))
 
         pygame.display.flip()
@@ -427,17 +430,14 @@ class MazeGame:
         return None
 
     def draw(self):
-        self.screen.fill(DARK)
+        self.screen.fill(BG_COLOR)
         screen_w = self.screen.get_width()
         screen_h = self.screen.get_height()
         t  = self.tile
         ox = (SCREEN_W - self.cols * t) // 2
         oy = 40 + (SCREEN_H - 80 - self.rows * t) // 2
 
-        # Maze rendering: floor + walls
-        WALL_COLOR  = (232, 238, 245)
-        FLOOR_COLOR = (38, 48, 64)
-        WALL_W      = max(2, t // 6)
+        WALL_W = max(2, t // 6)
 
         # Draw all cell floors
         for r in range(self.rows):
@@ -465,24 +465,24 @@ class MazeGame:
         # Exit marker
         ex = ox + self.exit_pos[0] * t
         ey = oy + self.exit_pos[1] * t
-        pygame.draw.rect(self.screen, GREEN, (ex+3, ey+3, t-6, t-6))
-        pygame.draw.rect(self.screen, WHITE, (ex+3, ey+3, t-6, t-6), 3)
-        lbl = self.small.render("EXIT", True, BLACK)
+        pygame.draw.rect(self.screen, EXIT_COLOR, (ex+3, ey+3, t-6, t-6))
+        pygame.draw.rect(self.screen, BG_COLOR, (ex+3, ey+3, t-6, t-6), 3)
+        lbl = self.small.render("EXIT", True, TEXT_COLOR)
         self.screen.blit(lbl, (ex + t//2 - lbl.get_width()//2, ey + t//2 - lbl.get_height()//2))
 
         # Player
         px = ox + self.player[0] * t
         py = oy + self.player[1] * t
-        pygame.draw.circle(self.screen, BLUE, (px + t//2, py + t//2), t//2 - 3)
-        pygame.draw.circle(self.screen, WHITE, (px + t//2, py + t//2), t//2 - 3, 3)
-        you = self.small.render("YOU", True, WHITE)
+        pygame.draw.circle(self.screen, PLAYER_COLOR, (px + t//2, py + t//2), t//2 - 3)
+        pygame.draw.circle(self.screen, BG_COLOR, (px + t//2, py + t//2), t//2 - 3, 3)
+        you = self.small.render("YOU", True, (255, 255, 255))
         self.screen.blit(you, (px + t//2 - you.get_width()//2, py + t//2 - you.get_height()//2))
 
         # HUD top
         hud_text = "ARROWS=move  SPACE=scan directions  J=menu  F=reset  ESC=quit  (win: ENTER=new maze  SPACE=menu)"
         while hud_text and self.small.size(hud_text)[0] > screen_w - 20:
             hud_text = hud_text[:-1]
-        hud = self.small.render(hud_text, True, GRAY)
+        hud = self.small.render(hud_text, True, MUTED_COLOR)
         self.screen.blit(hud, (screen_w//2 - hud.get_width()//2, 10))
 
         # HUD bottom
@@ -493,7 +493,7 @@ class MazeGame:
         )
         while pos_text and self.font.size(pos_text)[0] > screen_w - 20:
             pos_text = pos_text[:-1]
-        pos = self.font.render(pos_text, True, WHITE)
+        pos = self.font.render(pos_text, True, TEXT_COLOR)
         self.screen.blit(pos, (screen_w//2 - pos.get_width()//2, screen_h - 28))
 
         # Win overlay
@@ -502,7 +502,7 @@ class MazeGame:
             overlay.fill((0, 0, 0, 200))
             self.screen.blit(overlay, (0, SCREEN_H//2 - 45))
             win = self.big.render(
-                f"YOU WIN!  {self.moves} moves   ENTER=new maze   SPACE=menu", True, YELLOW
+                f"YOU WIN!  {self.moves} moves   ENTER=new maze   SPACE=menu", True, WIN_TEXT_COLOR
             )
             self.screen.blit(win, (SCREEN_W//2 - win.get_width()//2, SCREEN_H//2 - 22))
 

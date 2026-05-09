@@ -60,7 +60,7 @@ class ChatPanel(ctk.CTkFrame):
 
         subtitle = ctk.CTkLabel(
             self,
-            text="A bright, easy-to-read space for players to talk strategy and say hello.",
+            text="A space for players to talk strategy and say hello.",
             font=_font(13),
             text_color=APP_MUTED,
             wraplength=640,
@@ -139,6 +139,7 @@ class ChatPanel(ctk.CTkFrame):
         self.input_field.pack(side="left", fill="both", expand=True, padx=(12, 8), pady=12)
         self.input_field.bind("<Return>", self._on_send_message)
         self.input_field.bind("<Control-r>", lambda e: self._read_new_messages())  # Read new messages
+        self.input_field.bind("<space>", self._on_entry_space)
         self._bind_entry_key_feedback(self.input_field)
 
         self.send_btn = ctk.CTkButton(
@@ -296,11 +297,23 @@ class ChatPanel(ctk.CTkFrame):
                     ".": "dot", "@": "at", "-": "dash", "_": "underscore",
                     "!": "exclamation", "#": "hash", "$": "dollar",
                     "%": "percent", "&": "and", "+": "plus", "=": "equals",
-                    " ": "space",
+                    "'": "apostrophe", ",": "comma", " ": "space",
                 }
                 spoken = char_names.get(event.char, event.char)
                 self.speech_manager.announce(spoken, interrupt=True, force=True)
         entry.bind("<Key>", _on_key, add="+")
+
+    def _on_entry_space(self, event) -> str:
+        """Handle spacebar inside the chat input without bubbling to the main app."""
+        entry = event.widget
+        try:
+            if entry.selection_present():
+                entry.delete("sel.first", "sel.last")
+        except Exception:
+            pass
+        entry.insert(tk.INSERT, " ")
+        self.speech_manager.announce("space", interrupt=True, force=True)
+        return "break"
 
     def _read_new_messages(self) -> None:
         """Read out the current chat messages."""

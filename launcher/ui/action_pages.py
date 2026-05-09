@@ -223,6 +223,11 @@ class ActionsMixin:
         chat_window.minsize(640, 480)
         chat_window.configure(fg_color=APP_BG)
         chat_window.resizable(True, True)
+        chat_window.transient(self)
+        chat_window.grab_set()
+        chat_window.lift()
+        chat_window.attributes("-topmost", True)
+        chat_window.after(100, lambda: chat_window.attributes("-topmost", False))
 
         # Create the chat panel in the window
         chat_panel = ChatPanel(
@@ -237,9 +242,12 @@ class ActionsMixin:
 
         # Bind Ctrl+Q to close the window
         chat_window.bind("<Control-q>", lambda e: chat_window.destroy())
-        chat_window.focus_set()
+        chat_window.bind("<Control-e>", lambda e: chat_window.focus_force())
+        
+        # Ensure the chat window gets focus
+        chat_window.after(1000, lambda: chat_window.focus_force())
 
-        self.speech.announce("Chat window opened. Press Ctrl+Q to close.", interrupt=True, force=True)
+        self.speech.announce("Chat window opened. Press tab to enter message, enter to send, ctrl+R to read messages, and Ctrl+Q to close.", interrupt=True, force=True)
 
     def _render_actions(self, page_key: str) -> None:
         # Called every time the user switches pages; wipes the old panel and draws the new one.

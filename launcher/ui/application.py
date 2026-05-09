@@ -488,7 +488,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             text=(
                 "Apples to Apples home. Use Up and Down arrows to move between controls. "
                 "Press Enter or Space to select. Create a game or type a code and join. "
-                "Press Start Game when everyone is ready. Open Game Page moves to the live game page. "
+                "Press Start Game when everyone is ready. Say Game Code reads the current game code aloud. "
                 "Press Q during the live game to return here."
             ),
             justify="left",
@@ -509,6 +509,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         )
         code_entry.pack(fill="x", pady=(4, 10))
         self.speech.bind_focus(code_entry, "Apples game code field", "Type a game code to join or reopen a game.")
+        self._bind_entry_key_feedback(code_entry)
         self.action_widgets.append(code_entry)
 
 
@@ -524,12 +525,11 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         player_info.pack(anchor="w", pady=(0, 8))
         self.action_widgets.append(player_info)
 
-
         self._add_action_button("Read Instructions", self._apples_read_instructions, "Hear Apples to Apples game instructions.")
         self._add_action_button("Create Game", self._apples_create_game, "Create a new Apples to Apples game code.")
         self._add_action_button("Join Game", self._apples_join_game, "Join the current Apples to Apples game code.")
         self._add_action_button("Start Game", self._apples_start_game, "Start the current Apples to Apples game.")
-        self._add_action_button("Open Game Page", lambda: self._apples_open_game(announce=True), "Open the separate live Apples to Apples game page.")
+        self._add_action_button("Say Game Code", self._apples_say_game_code, "Hear the current Apples to Apples game code spoken aloud.")
 
 
         game = self._current_apples_game()
@@ -771,7 +771,8 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         self.speech.announce(
                 "Apples to Apples instructions. "
                 "From the Apples home page, create a game or use the game code, then press enter on the Join Game button. "
-                "Press Start Game when everyone is ready, then open the live game page. "
+                "Press Say Game Code to hear the current code spoken aloud. "
+                "Press Start Game when everyone is ready. "
                 "On the live game page, use Up and Down arrows to move between buttons and cards. "
                 "Press Enter or Space to select the focused button or card. "
                 "If you are a player, pressing enter or a space on a card submits it immediately. "
@@ -795,6 +796,28 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         self.after(100, self._focus_apples_game_default)
         if announce:
             self.after(180, self._announce_apples_state)
+
+    def _apples_say_game_code(self) -> None:
+        code = self.apples_code_var.get().strip().upper()
+        if not code:
+            self.speech.announce("Enter a game code to hear it spoken.", interrupt=True, force=True)
+            return
+        char_names = {
+            ".": "dot",
+            "@": "at",
+            "-": "dash",
+            "_": "underscore",
+            "!": "exclamation",
+            "#": "hash",
+            "$": "dollar",
+            "%": "percent",
+            "&": "and",
+            "+": "plus",
+            "=": "equals",
+            " ": "space",
+        }
+        spoken_chars = [char_names.get(ch, ch) for ch in code]
+        self.speech.announce(f"Apples game code is {' '.join(spoken_chars)}.", interrupt=True, force=True)
 
 
     def _focus_apples_game_default(self) -> None:
