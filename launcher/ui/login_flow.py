@@ -389,7 +389,6 @@ class LoginMixin:
                 textvariable=var,
                 width=460,
                 show=show,
-                height=38,
                 **self._entry_style_kwargs(),
             )
             entry.pack(pady=(3, 8), fill="x")
@@ -416,7 +415,6 @@ class LoginMixin:
                 textvariable=var,
                 width=460,
                 show=show,
-                height=38,
                 **self._entry_style_kwargs(),
             )
             entry.pack(pady=(3, 8), fill="x")
