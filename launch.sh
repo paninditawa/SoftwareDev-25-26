@@ -1,4 +1,3 @@
 #!/bin/bash
 cd "$(dirname "$0")"
-source .venv/bin/activate
-pythonw launch_gamespace.py &
+.venv/bin/python launch_gamespace.py &
