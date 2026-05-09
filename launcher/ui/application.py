@@ -260,11 +260,11 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
 
         self.subheader = ctk.CTkLabel(
             self.hero,
-            text="An accessible arcade launcher with bright, playful controls and roomy layouts",
+            text="",
             text_color=APP_MUTED,
             font=_font(18, bold=True),
         )
-        self.subheader.pack(fill="x", padx=20, pady=(0, 18))
+        self.subheader.pack(fill="x", padx=20, pady=(0, 8))
 
         self.content = ctk.CTkFrame(self, fg_color=APP_PANEL, corner_radius=24, border_width=3, border_color=APP_BORDER)
         self.content.pack(fill="both", expand=True, padx=24, pady=(0, 12))

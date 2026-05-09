@@ -261,33 +261,33 @@ class LoginMixin:
 
         # The card is a rounded rectangle that holds all the form elements.
         card = ctk.CTkFrame(wrapper, width=600, fg_color=APP_PANEL_ALT, corner_radius=20, border_width=2, border_color=APP_BORDER)
-        card.pack(fill="both", expand=True, padx=24, pady=24)
+        card.pack(fill="both", expand=True, padx=24, pady=16)
 
-        title = ctk.CTkLabel(card, text="Enter the Arcade", text_color=APP_TEXT, font=_font(30, bold=True))
-        title.pack(anchor="w", padx=24, pady=(24, 8))
+        title = ctk.CTkLabel(card, text="Enter the Arcade", text_color=APP_TEXT, font=_font(26, bold=True))
+        title.pack(anchor="w", padx=24, pady=(16, 4))
 
         # Brief navigation hint for blind users.
         summary = ctk.CTkLabel(
             card,
-            text="Use Up and Down arrows to move between fields and buttons. Switch tabs to sign in or create a new player account.",
+            text="Use Up and Down arrows to move between fields and buttons.",
             wraplength=460,
             justify="left",
             anchor="w",
             text_color=APP_MUTED,
-            font=_font(16, bold=True),
+            font=_font(14, bold=True),
         )
-        summary.pack(anchor="w", padx=24, pady=(0, 16))
+        summary.pack(anchor="w", padx=24, pady=(0, 8))
         self._login_summary_label = summary
 
         # Voice speed slider — first interactive element so users can
         # adjust speech rate before filling in any credentials.
         speed_frame = ctk.CTkFrame(card, fg_color="transparent")
-        speed_frame.pack(fill="x", padx=24, pady=(0, 16))
+        speed_frame.pack(fill="x", padx=24, pady=(0, 8))
 
-        speed_label = ctk.CTkLabel(speed_frame, text="Voice Speed", text_color=APP_TEXT, font=_font(15, bold=True))
+        speed_label = ctk.CTkLabel(speed_frame, text="Voice Speed", text_color=APP_TEXT, font=_font(14, bold=True))
         speed_label.pack(anchor="w")
 
-        self._speed_value_label = ctk.CTkLabel(speed_frame, text=str(get_speech_rate()), text_color=APP_MUTED, font=_font(14))
+        self._speed_value_label = ctk.CTkLabel(speed_frame, text=str(get_speech_rate()), text_color=APP_MUTED, font=_font(13))
         self._speed_value_label.pack(anchor="e")
 
         # Highlight ring shown when the slider has keyboard focus.
@@ -295,7 +295,7 @@ class LoginMixin:
             speed_frame, fg_color="transparent", border_width=3,
             border_color=APP_PANEL, corner_radius=10,
         )
-        self._speed_slider_highlight.pack(pady=(4, 0), fill="x")
+        self._speed_slider_highlight.pack(pady=(2, 0), fill="x")
 
         self._speed_slider = ctk.CTkSlider(
             self._speed_slider_highlight,
@@ -305,7 +305,7 @@ class LoginMixin:
             command=self._on_speed_slider_change,
         )
         self._speed_slider.set(get_speech_rate())
-        self._speed_slider.pack(padx=6, pady=6, fill="x")
+        self._speed_slider.pack(padx=6, pady=4, fill="x")
         # Ensure the canvas inside CTkSlider routes Left/Right to the adjustment handler,
         # and Up/Down navigate away from the slider instead of being consumed by it.
         self._speed_slider._canvas.bind("<Left>", lambda e: self._adjust_speed_slider(-1), add="+")
@@ -330,11 +330,11 @@ class LoginMixin:
         self._tab_frames: dict[str, ctk.CTkFrame] = {}
 
         tab_row = ctk.CTkFrame(card, fg_color="transparent")
-        tab_row.pack(fill="x", padx=24, pady=(0, 4))
+        tab_row.pack(fill="x", padx=24, pady=(0, 2))
         tab_row.grid_columnconfigure((0, 1), weight=1)
 
         si_tab_btn = ctk.CTkButton(
-            tab_row, text="Sign In", height=48, font=_font(17, bold=True),
+            tab_row, text="Sign In", height=42, font=_font(15, bold=True),
             command=lambda: self._switch_login_tab("Sign In"),
             corner_radius=14,
         )
@@ -351,7 +351,7 @@ class LoginMixin:
         si_tab_btn.bind("<Up>", lambda e: (self._move_to_login_focus(0), "break")[1], add="+")
 
         ca_tab_btn = ctk.CTkButton(
-            tab_row, text="Create Account", height=48, font=_font(17, bold=True),
+            tab_row, text="Create Account", height=42, font=_font(15, bold=True),
             command=lambda: self._switch_login_tab("Create Account"),
             corner_radius=14,
         )
@@ -383,21 +383,22 @@ class LoginMixin:
             ("username", self._si_username_var, "Username", "Type your account username or email address.", ""),
             ("password", self._si_password_var, "Password", "Type your password.", "*"),
         ]:
-            ctk.CTkLabel(si_frame, text=label_text, text_color=APP_TEXT, font=_font(15, bold=True)).pack(anchor="w")
+            ctk.CTkLabel(si_frame, text=label_text, text_color=APP_TEXT, font=_font(14, bold=True)).pack(anchor="w")
             entry = ctk.CTkEntry(
                 si_frame,
                 textvariable=var,
                 width=460,
                 show=show,
+                height=38,
                 **self._entry_style_kwargs(),
             )
-            entry.pack(pady=(4, 12), fill="x")
+            entry.pack(pady=(3, 8), fill="x")
             self.speech.bind_focus(entry, f"{label_text} field", hint)
             self._si_entries[field_name] = entry
             self._bind_entry_key_feedback(entry)
 
         self._si_button = ctk.CTkButton(si_frame, text="Sign In", command=self._sign_in, **self._button_style_kwargs())
-        self._si_button.pack(fill="x", pady=(4, 12))
+        self._si_button.pack(fill="x", pady=(4, 8))
         self._register_login_button(self._si_button, "Sign In button", "Activate to sign in.")
 
         # --- Create Account frame ---
@@ -409,21 +410,22 @@ class LoginMixin:
             ("email", self._ca_email_var, "Email", "Type your account email address.", ""),
             ("password", self._ca_password_var, "Password", "Type your password.", "*"),
         ]:
-            ctk.CTkLabel(ca_frame, text=label_text, text_color=APP_TEXT, font=_font(15, bold=True)).pack(anchor="w")
+            ctk.CTkLabel(ca_frame, text=label_text, text_color=APP_TEXT, font=_font(14, bold=True)).pack(anchor="w")
             entry = ctk.CTkEntry(
                 ca_frame,
                 textvariable=var,
                 width=460,
                 show=show,
+                height=38,
                 **self._entry_style_kwargs(),
             )
-            entry.pack(pady=(4, 12), fill="x")
+            entry.pack(pady=(3, 8), fill="x")
             self.speech.bind_focus(entry, f"{label_text} field", hint)
             self._ca_entries[field_name] = entry
             self._bind_entry_key_feedback(entry)
 
         self._ca_button = ctk.CTkButton(ca_frame, text="Create Account", command=self._sign_up, **self._button_style_kwargs())
-        self._ca_button.pack(fill="x", pady=(4, 12))
+        self._ca_button.pack(fill="x", pady=(4, 8))
         self._register_login_button(self._ca_button, "Create Account button", "Activate to create a new account.")
 
         # Apply initial tab display (Sign In active, Create Account hidden).
@@ -431,7 +433,7 @@ class LoginMixin:
 
         # Help button sits below the tab view, always visible.
         self._login_help_button = ctk.CTkButton(card, text="Read Login Help", command=self._handle_help, **self._button_style_kwargs())
-        self._login_help_button.pack(padx=24, pady=(0, 16), fill="x")
+        self._login_help_button.pack(padx=24, pady=(0, 10), fill="x")
         self._register_login_button(self._login_help_button, "Read Login Help button", "Activate to hear login instructions.")
 
         # Build the initial focus order for the Sign In tab.
