@@ -212,17 +212,57 @@ class ActionsMixin:
         self._register_action_button(open_chat_btn, "Activate to open the chat window.")
 
     def _open_chat_window(self) -> None:
-        # Open chat in a separate window
+        # Open chat in a separate window, or raise the existing one if already open.
         if not self.auth_session:
             self.speech.announce("Please sign in to access chat.", interrupt=True, force=True)
             return
 
+        def _activate_chat_window(win: ctk.CTkToplevel) -> None:
+            # Windows sometimes opens child windows behind the parent; pulse topmost briefly.
+            try:
+                win.deiconify()
+            except Exception:
+                pass
+            try:
+                win.lift()
+            except Exception:
+                pass
+            try:
+                win.focus_force()
+            except Exception:
+                pass
+            try:
+                win.grab_set()
+            except Exception:
+                pass
+            try:
+                win.attributes("-topmost", True)
+                win.after(120, lambda: win.attributes("-topmost", False))
+            except Exception:
+                pass
+
+        # Reuse the existing window instead of stacking new ones.
+        existing = getattr(self, "_chat_window", None)
+        if existing is not None:
+            try:
+                if existing.winfo_exists():
+                    _activate_chat_window(existing)
+                    self.speech.announce("Chat window is already open.", interrupt=True, force=True)
+                    return
+            except Exception:
+                pass
+
         chat_window = ctk.CTkToplevel(self)
         chat_window.title("GameSpace Chat")
-        chat_window.geometry("760x560")
+        chat_window.geometry("760x580")
         chat_window.minsize(640, 480)
         chat_window.configure(fg_color=APP_BG)
         chat_window.resizable(True, True)
+        try:
+            chat_window.transient(self.winfo_toplevel())
+        except Exception:
+            pass
+        self._chat_window = chat_window
 
         # Create the chat panel in the window
         chat_panel = ChatPanel(
@@ -235,9 +275,25 @@ class ActionsMixin:
         )
         chat_panel.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # Bind Ctrl+Q to close the window
-        chat_window.bind("<Control-q>", lambda e: chat_window.destroy())
-        chat_window.focus_set()
+        def _close_chat(_event=None):
+            try:
+                try:
+                    if chat_window.grab_current() is chat_window:
+                        chat_window.grab_release()
+                except Exception:
+                    pass
+                chat_window.destroy()
+            finally:
+                self._chat_window = None
+
+        # Bind close shortcuts and clear cached window reference on close.
+        chat_window.bind("<Control-q>", _close_chat)
+        chat_window.bind("<Escape>", _close_chat)
+        chat_window.protocol("WM_DELETE_WINDOW", _close_chat)
+
+        # Activate now and once more shortly after the window is mapped.
+        _activate_chat_window(chat_window)
+        chat_window.after(60, lambda: _activate_chat_window(chat_window))
 
         self.speech.announce("Chat window opened. Press Ctrl+Q to close.", interrupt=True, force=True)
 
