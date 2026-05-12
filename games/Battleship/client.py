@@ -9,8 +9,6 @@ Uses Supabase as the cloud backend so games work over the internet.
 
 from __future__ import annotations
 import argparse
-import math
-import os
 import sys
 import threading
 import time
@@ -55,21 +53,13 @@ def speak_now(text: str) -> None:
 
 
 BOARD_SIZE = 8
+WINDOW_WIDTH = 1000
+WINDOW_HEIGHT = 580
+CELL = min(WINDOW_WIDTH // (BOARD_SIZE * 2 + 2), WINDOW_HEIGHT // (BOARD_SIZE + 2))
 
-WINDOW_WIDTH = 1320
-WINDOW_HEIGHT = 800
-
-CELL = 50
-
-LEFT_OFFSET_X = 70
-RIGHT_OFFSET_X = LEFT_OFFSET_X + BOARD_SIZE * CELL + 90
-BOARD_OFFSET_Y = 130
-
-SIDEBAR_X = RIGHT_OFFSET_X + BOARD_SIZE * CELL + 60
-SIDEBAR_W = WINDOW_WIDTH - SIDEBAR_X - 30
-
-BOTTOM_PANEL_Y = BOARD_OFFSET_Y + BOARD_SIZE * CELL + 32
-BOTTOM_PANEL_H = WINDOW_HEIGHT - BOTTOM_PANEL_Y - 18
+LEFT_OFFSET_X = 40
+RIGHT_OFFSET_X = LEFT_OFFSET_X + BOARD_SIZE * CELL + 40
+BOARD_OFFSET_Y = 52
 
 SHIP_ORDER = [
     ("Aircraft Carrier", 5),
@@ -79,34 +69,17 @@ SHIP_ORDER = [
     ("Destroyer", 2),
 ]
 
-C_BG = (8, 18, 32)
-C_BG_DEEP = (4, 12, 22)
-C_GRID_DARK = (35, 60, 88)
-C_WATER_A = (20, 42, 68)
-C_WATER_B = (26, 50, 78)
-C_SHIP = (160, 175, 195)
-C_SHIP_DARK = (110, 125, 145)
-C_SHIP_DAMAGED = (185, 130, 80)
-C_SHIP_SUNK = (105, 55, 55)
-C_PREVIEW_OK = (70, 190, 140, 130)
-C_PREVIEW_BAD = (205, 85, 75, 130)
-C_CURSOR_FIRE = (255, 200, 90)
-C_CURSOR_PLACE = (140, 230, 170)
-C_CURSOR_INSPECT = (190, 210, 240)
-C_HIT = (220, 90, 70)
-C_HIT_BRIGHT = (255, 140, 110)
-C_MISS = (225, 235, 245)
-C_GRID = (70, 110, 150)
-C_TEXT = (240, 246, 252)
-C_DIM = (155, 178, 205)
-C_LABEL = (240, 200, 110)
-C_GOLD = (212, 175, 95)
-C_KEY = (255, 235, 170)
-C_KEY_BORDER = (235, 50, 50)
-C_DIVIDER = (45, 75, 108)
-C_OK = (130, 220, 160)
-C_WARN = (250, 195, 90)
-C_BORDER = (90, 130, 170)
+C_BG = (18, 29, 43)
+C_GRID = (125, 150, 179)
+C_SHIP = (120, 145, 171)
+C_PREVIEW = (14, 92, 168, 140)
+C_BAD = (176, 83, 0, 140)
+C_SELECT = (255, 191, 71)
+C_HIT = (198, 88, 0)
+C_MISS = (236, 241, 247)
+C_TEXT = (248, 250, 252)
+C_DIM = (201, 212, 224)
+C_LABEL = (255, 232, 166)
 
 
 def _tone(freq, duration=0.25, volume=0.55, envelope="decay"):
@@ -396,9 +369,7 @@ def announce_move():
     _position_cue(selected_row, selected_col).play()
     label = _coord_spoken(selected_row, selected_col)
     state = _describe_cell(selected_row, selected_col)
-    mode_prefix = ""
-    if phase == "battle" and inspect_mode == "own":
-        mode_prefix = "Inspecting your grid. "
+    mode_prefix = "Inspecting your grid. " if (phase == "battle" and inspect_mode == "own") else ""
     speak_now(f"{mode_prefix}{label}, {state}.")
 
 
@@ -505,12 +476,12 @@ def _fit_text(font, text, max_width):
     return (trimmed + "...") if trimmed else "..."
 
 
-def describe_status():
+def describe_status() -> str:
     if phase == "placement":
         if placed_count < len(SHIP_ORDER):
             name, ln = SHIP_ORDER[placed_count]
             pos = _coord_label(selected_row, selected_col)
-            return f"Placing {name} (length {ln}) at {pos} {orientation}"
+            return f"Placing {name} (len {ln}) at {pos} {orientation} — arrows, J rotate, Enter confirm"
         return "All ships placed. Press Enter to submit."
     if phase == "waiting":
         return "Ships submitted. Waiting for opponent."
@@ -519,263 +490,78 @@ def describe_status():
     if supabase_error:
         return f"Connection error: {supabase_error}"
     if my_turn:
+        if inspect_mode == "own":
+            return "YOUR TURN — inspecting your grid (Tab to return to firing)"
         target = _coord_label(selected_row, selected_col)
-        mode = "your grid (inspect)" if inspect_mode == "own" else f"firing at {target}"
-        return f"YOUR TURN — {mode}"
-    return "Opponent's turn. Listen for incoming fire."
+        return f"YOUR TURN — aiming at {target}, Enter or Space to fire"
+    return "Opponent's turn…"
 
 
-def draw_background():
-    screen.fill(C_BG)
-    for y in range(WINDOW_HEIGHT):
-        shade = int(8 * (1 - y / WINDOW_HEIGHT))
-        pygame.draw.line(screen, (C_BG[0] + shade, C_BG[1] + shade, C_BG[2] + shade),
-                         (0, y), (WINDOW_WIDTH, y))
-
-
-def draw_title_bar():
-    bar = pygame.Rect(0, 0, WINDOW_WIDTH, 70)
-    pygame.draw.rect(screen, C_BG_DEEP, bar)
-    pygame.draw.line(screen, C_GOLD, (0, 68), (WINDOW_WIDTH, 68), 1)
-    pygame.draw.line(screen, C_DIVIDER, (0, 70), (WINDOW_WIDTH, 70), 1)
-    title = font_title.render("E C H O   F L E E T", True, C_GOLD)
-    screen.blit(title, (WINDOW_WIDTH // 2 - title.get_width() // 2, 12))
-    sub = font_sm.render("BATTLESHIP — ACCESSIBLE EDITION", True, C_DIM)
-    screen.blit(sub, (WINDOW_WIDTH // 2 - sub.get_width() // 2, 48))
-
-
-def draw_grid(offset_x, hits, show_ships, label, is_active):
-    grid_w = BOARD_SIZE * CELL
-    label_color = C_LABEL if is_active else C_DIM
-    label_surf = font_label.render(label, True, label_color)
-    label_x = offset_x + (grid_w - label_surf.get_width()) // 2
-    screen.blit(label_surf, (label_x, BOARD_OFFSET_Y - 58))
-
-    for i in range(BOARD_SIZE):
-        ch = chr(ord("A") + i)
-        lbl = font_axis.render(ch, True, C_GOLD)
-        screen.blit(lbl, (offset_x + i * CELL + CELL // 2 - lbl.get_width() // 2,
-                          BOARD_OFFSET_Y - 26))
-    for i in range(BOARD_SIZE):
-        lbl = font_axis.render(str(i + 1), True, C_GOLD)
-        screen.blit(lbl, (offset_x - 26,
-                          BOARD_OFFSET_Y + i * CELL + CELL // 2 - lbl.get_height() // 2))
-
+def draw_grid(offset_x: int, hits, show_ships: bool) -> None:
     for row in range(BOARD_SIZE):
         for col in range(BOARD_SIZE):
             rect = pygame.Rect(offset_x + col * CELL, BOARD_OFFSET_Y + row * CELL, CELL, CELL)
-            water = C_WATER_A if (row + col) % 2 == 0 else C_WATER_B
-            pygame.draw.rect(screen, water, rect)
-            pygame.draw.rect(screen, C_GRID_DARK, rect, 1)
-
+            pygame.draw.rect(screen, C_GRID, rect, 1)
             if show_ships and own_ships[row][col]:
-                ship_name = own_ship_names[row][col]
-                if ship_name and ship_name in my_sunk:
-                    fill = C_SHIP_SUNK
-                elif hits_on_me[row][col] is True:
-                    fill = C_SHIP_DAMAGED
-                else:
-                    fill = C_SHIP
-                inner_rect = rect.inflate(-8, -8)
-                pygame.draw.rect(screen, C_SHIP_DARK, inner_rect, border_radius=3)
-                pygame.draw.rect(screen, fill, inner_rect.inflate(-2, -2), border_radius=2)
-
+                pygame.draw.rect(screen, C_SHIP, rect.inflate(-4, -4), border_radius=2)
             if hits is not None:
                 cell = hits[row][col]
                 if cell == "hit" or cell is True:
                     pygame.draw.circle(screen, C_HIT, rect.center, CELL // 3)
-                    pygame.draw.circle(screen, C_HIT_BRIGHT, rect.center, CELL // 3, 2)
-                    marker = font_md.render("X", True, C_TEXT)
+                    marker = font_sm.render("X", True, C_TEXT)
                     screen.blit(marker, marker.get_rect(center=rect.center))
                 elif cell == "miss" or cell is False:
-                    pygame.draw.circle(screen, C_MISS, rect.center, CELL // 5)
-                    pygame.draw.circle(screen, C_GRID, rect.center, CELL // 5, 2)
+                    pygame.draw.circle(screen, C_MISS, rect.center, CELL // 4)
+                    marker = font_sm.render("O", True, C_BG)
+                    screen.blit(marker, marker.get_rect(center=rect.center))
 
 
-def draw_placement_preview():
+def draw_placement_preview() -> None:
     if phase != "placement" or placed_count >= len(SHIP_ORDER):
         return
     valid = _placement_valid(placed_count, selected_row, selected_col, orientation)
-    colour = C_PREVIEW_OK if valid else C_PREVIEW_BAD
-    surface = pygame.Surface((CELL - 6, CELL - 6), pygame.SRCALPHA)
+    colour = C_PREVIEW if valid else C_BAD
+    surface = pygame.Surface((CELL, CELL), pygame.SRCALPHA)
     surface.fill(colour)
     for r, c in _ship_coords(placed_count, selected_row, selected_col, orientation):
         if 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
-            rect = pygame.Rect(LEFT_OFFSET_X + c * CELL + 3,
-                               BOARD_OFFSET_Y + r * CELL + 3, CELL - 6, CELL - 6)
+            rect = pygame.Rect(LEFT_OFFSET_X + c * CELL, BOARD_OFFSET_Y + r * CELL, CELL, CELL)
             screen.blit(surface, rect.topleft)
 
 
-def draw_cursor():
+def draw_cursor() -> None:
     if phase == "placement":
         ox = LEFT_OFFSET_X
-        col = C_CURSOR_PLACE
     elif phase in ("battle", "game_over"):
-        if inspect_mode == "own":
-            ox = LEFT_OFFSET_X
-            col = C_CURSOR_INSPECT
-        else:
-            ox = RIGHT_OFFSET_X
-            col = C_CURSOR_FIRE
+        ox = LEFT_OFFSET_X if inspect_mode == "own" else RIGHT_OFFSET_X
     else:
         return
-
     rect = pygame.Rect(ox + selected_col * CELL, BOARD_OFFSET_Y + selected_row * CELL, CELL, CELL)
-    pulse = (math.sin(time.time() * 5) + 1) / 2
-    thickness = 3 + int(pulse * 2)
-    pygame.draw.rect(screen, col, rect, thickness)
-    tick = 8
-    for cx, cy, dx, dy in [
-        (rect.left, rect.top, 1, 1),
-        (rect.right, rect.top, -1, 1),
-        (rect.left, rect.bottom, 1, -1),
-        (rect.right, rect.bottom, -1, -1),
-    ]:
-        pygame.draw.line(screen, col, (cx, cy), (cx + dx * tick, cy), 3)
-        pygame.draw.line(screen, col, (cx, cy), (cx, cy + dy * tick), 3)
-
-    if jump_buffer:
-        hint = font_sm.render(f"jump: {jump_buffer}_", True, C_KEY)
-        bg = pygame.Rect(rect.right + 8, rect.top - 4,
-                         hint.get_width() + 10, hint.get_height() + 6)
-        pygame.draw.rect(screen, C_BG_DEEP, bg, border_radius=3)
-        pygame.draw.rect(screen, C_GOLD, bg, 1, border_radius=3)
-        screen.blit(hint, (bg.left + 5, bg.top + 3))
+    pygame.draw.rect(screen, C_SELECT, rect, 3)
 
 
-def _draw_ship_icon(x, y, length, hits, sunk, cell_size=12):
-    pad = 2
-    for i in range(length):
-        rect = pygame.Rect(x + i * (cell_size + pad), y, cell_size, cell_size)
-        if sunk:
-            color = C_SHIP_SUNK
-        elif i < hits:
-            color = C_SHIP_DAMAGED
-        else:
-            color = C_SHIP
-        pygame.draw.rect(screen, color, rect, border_radius=2)
-        pygame.draw.rect(screen, C_SHIP_DARK, rect, 1, border_radius=2)
-        if i < hits:
-            pygame.draw.line(screen, C_HIT, rect.topleft, rect.bottomright, 2)
-            pygame.draw.line(screen, C_HIT, rect.topright, rect.bottomleft, 2)
+def draw_labels() -> None:
+    screen.blit(font_md.render("YOUR SHIPS", True, C_LABEL), (LEFT_OFFSET_X, 4))
+    screen.blit(font_md.render("FIRE HERE", True, C_LABEL), (RIGHT_OFFSET_X, 4))
+    for i in range(BOARD_SIZE):
+        ch = chr(ord("A") + i)
+        for ox in (LEFT_OFFSET_X, RIGHT_OFFSET_X):
+            lbl = font_sm.render(ch, True, C_DIM)
+            screen.blit(lbl, (ox + i * CELL + CELL // 2 - 5, BOARD_OFFSET_Y - 18))
+    for i in range(BOARD_SIZE):
+        for ox in (LEFT_OFFSET_X - 28, RIGHT_OFFSET_X - 28):
+            lbl = font_sm.render(str(i + 1), True, C_DIM)
+            screen.blit(lbl, (ox, BOARD_OFFSET_Y + i * CELL + CELL // 2 - 8))
 
 
-def draw_sidebar():
-    panel = pygame.Rect(SIDEBAR_X - 14, BOARD_OFFSET_Y - 62,
-                        SIDEBAR_W + 14, BOARD_SIZE * CELL + 80)
-    pygame.draw.rect(screen, C_BG_DEEP, panel, border_radius=6)
-    pygame.draw.rect(screen, C_BORDER, panel, 2, border_radius=6)
-    pygame.draw.rect(screen, C_GOLD, panel.inflate(-6, -6), 1, border_radius=4)
-
-    pad = 14
-    inner_x = panel.left + pad
-    inner_right = panel.right - pad
-
-    title = font_label.render("FLEET STATUS", True, C_GOLD)
-    y = panel.top + 10
-    screen.blit(title, (panel.left + (panel.width - title.get_width()) // 2, y))
-    y += title.get_height() + 4
-    pygame.draw.line(screen, C_DIVIDER, (inner_x, y), (inner_right, y), 1)
-    y += 8
-
-    your_lbl = font_sm_bold.render("YOUR FLEET", True, C_OK)
-    screen.blit(your_lbl, (inner_x, y))
-    y += your_lbl.get_height() + 4
-
-    for name, length in SHIP_ORDER:
-        cells = [(r, c) for r in range(BOARD_SIZE) for c in range(BOARD_SIZE)
-                 if own_ship_names[r][c] == name]
-        placed = len(cells) >= length
-        hits = sum(1 for r, c in cells if hits_on_me[r][c] is True) if placed else 0
-        sunk = placed and hits >= length
-        name_color = C_DIM if not placed else (C_SHIP_SUNK if sunk else C_TEXT)
-        nm = font_sm.render(name, True, name_color)
-        screen.blit(nm, (inner_x, y))
-        ln = font_xs.render(f"({length})", True, C_DIM)
-        screen.blit(ln, (inner_x + nm.get_width() + 4, y + 2))
-        _draw_ship_icon(inner_x + 4, y + nm.get_height() + 2, length, hits, sunk, cell_size=12)
-        y += nm.get_height() + 18
-
-    y += 4
-    pygame.draw.line(screen, C_DIVIDER, (inner_x, y), (inner_right, y), 1)
-    y += 8
-
-    their_lbl = font_sm_bold.render("ENEMY FLEET", True, C_WARN)
-    screen.blit(their_lbl, (inner_x, y))
-    y += their_lbl.get_height() + 4
-
-    for name, length in SHIP_ORDER:
-        sunk = name in opponent_sunk
-        nm = font_sm.render(name, True, C_SHIP_SUNK if sunk else C_TEXT)
-        screen.blit(nm, (inner_x, y))
-        ln = font_xs.render(f"({length})", True, C_DIM)
-        screen.blit(ln, (inner_x + nm.get_width() + 4, y + 2))
-        status = font_sm_bold.render("SUNK", True, C_HIT) if sunk else font_sm.render("...", True, C_DIM)
-        screen.blit(status, (inner_right - status.get_width(), y))
-        y += nm.get_height() + 4
-
-
-def draw_status_panel():
-    panel = pygame.Rect(20, BOTTOM_PANEL_Y, WINDOW_WIDTH - 40, BOTTOM_PANEL_H)
-    pygame.draw.rect(screen, C_BG_DEEP, panel, border_radius=6)
-    pygame.draw.rect(screen, C_BORDER, panel, 2, border_radius=6)
-    pygame.draw.rect(screen, C_GOLD, panel.inflate(-6, -6), 1, border_radius=4)
-
-    pad = 14
-    max_w = panel.width - pad * 2
-    line_h = 22
-    y = panel.top + 10
-
-    status_line = _fit_text(font_md, describe_status(), max_w)
-    screen.blit(font_md.render(status_line, True, C_TEXT), (panel.left + pad, y))
-    y += font_md.get_height() + 4
-
+def draw_status() -> None:
+    y = BOARD_OFFSET_Y + BOARD_SIZE * CELL + 10
+    max_w = WINDOW_WIDTH - 40
+    screen.blit(font_md.render(_fit_text(font_md, describe_status(), max_w), True, C_TEXT), (20, y))
     if last_spoken_text:
-        spoken = _fit_text(font_sm, last_spoken_text, max_w)
-        screen.blit(font_sm.render(spoken, True, C_DIM), (panel.left + pad, y))
-        y += line_h
-
-    y += 4
-
-    if phase == "placement":
-        keys = [
-            ("arrows", "move"), ("J", "rotate"), ("K", "shuffle"),
-            ("Enter", "confirm"), ("A-H+1-8", "jump"),
-            ("R", "row"), ("C", "col"), ("F", "fleet"), ("?", "help"),
-        ]
-    elif phase == "battle":
-        keys = [
-            ("arrows", "aim"), ("Enter", "fire"), ("Tab", "inspect"),
-            ("A-H+1-8", "jump"), ("R", "row"), ("C", "col"),
-            ("F", "fleet"), ("H", "hits"), ("M", "misses"),
-            ("L", "last"), ("?", "help"),
-        ]
-    else:
-        keys = [("Esc", "quit")]
-
-    x = panel.left + pad
-    key_pad_x, key_pad_y, inter_pad = 7, 3, 14
-
-    for key, action in keys:
-        key_surf = font_keys.render(key, True, C_KEY)
-        act_surf = font_sm.render(action, True, C_DIM)
-        key_w = key_surf.get_width() + key_pad_x * 2
-        key_h = key_surf.get_height() + key_pad_y * 2
-        block_w = key_w + 6 + act_surf.get_width()
-        if x + block_w > panel.right - pad:
-            x = panel.left + pad
-            y += max(line_h, key_h + 4)
-        key_y = y + (act_surf.get_height() - key_h) // 2 + 1
-        cap = pygame.Rect(x, key_y, key_w, key_h)
-        pygame.draw.rect(screen, "red", cap, border_radius=3)
-        pygame.draw.rect(screen, C_KEY_BORDER, cap, 2, border_radius=3)
-        screen.blit(key_surf, (x + key_pad_x, key_y + key_pad_y - 1))
-        screen.blit(act_surf, (x + key_w + 6, y + 2))
-        x += block_w + inter_pad
-
+        screen.blit(font_sm.render(_fit_text(font_sm, last_spoken_text, max_w), True, C_DIM), (20, y + 28))
     if supabase_error:
-        err = _fit_text(font_sm, f"! Connection error: {supabase_error}", max_w)
-        screen.blit(font_sm.render(err, True, C_HIT_BRIGHT), (panel.left + pad, panel.bottom - 24))
+        screen.blit(font_sm.render(_fit_text(font_sm, f"Error: {supabase_error}", max_w), True, C_HIT), (20, y + 50))
 
 
 jump_buffer: str = ""
@@ -811,54 +597,13 @@ def _try_apply_jump():
         speak_now("Out of range.")
 
 
-def _find_seadoh_font():
-    here = Path(__file__).resolve().parent
-    candidates = []
-    for folder in (here, here.parent, _repo_root, _repo_root / "fonts",
-                   _repo_root / "assets", _repo_root / "assets" / "fonts"):
-        for ext in (".ttf", ".otf", ".TTF", ".OTF"):
-            for name in ("Seadoh", "seadoh", "SEADOH"):
-                candidates.append(folder / f"{name}{ext}")
-    if sys.platform.startswith("win"):
-        win_fonts = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts"
-        user_fonts = Path.home() / "AppData/Local/Microsoft/Windows/Fonts"
-        for folder in (win_fonts, user_fonts):
-            for ext in (".ttf", ".otf"):
-                for name in ("Seadoh", "seadoh"):
-                    candidates.append(folder / f"{name}{ext}")
-    for p in candidates:
-        try:
-            if p.exists():
-                return str(p)
-        except OSError:
-            continue
-    return None
-
-
-def _make_font(font_path, size, bold=False, fallback=None):
-    if font_path:
-        try:
-            f = pygame.font.Font(font_path, size)
-            if bold:
-                f.set_bold(True)
-            return f
-        except Exception as e:
-            print(f"Failed to load font {font_path}: {e}")
-    candidates = fallback or ["Verdana", "Tahoma", "Trebuchet MS"]
-    for name in candidates:
-        if name.lower().replace(" ", "") in pygame.font.get_fonts():
-            return pygame.font.SysFont(name, size, bold=bold)
-    return pygame.font.SysFont(None, size, bold=bold)
-
-
 def main():
     global args, phase, placed_count, orientation
     global own_ships, own_ship_names, hits_on_me, hits_on_opponent
     global selected_row, selected_col
     global lock, my_turn, opponent_ready, game_over_message, i_won
     global supabase_error, last_event, opponent_sunk, my_sunk, inspect_mode, jump_buffer
-    global _layout, screen
-    global font_xs, font_sm, font_sm_bold, font_md, font_label, font_keys, font_axis, font_title
+    global _layout, screen, font_sm, font_md
     global SND_HIT, SND_MISS, SND_SUNK, SND_WIN, SND_LOSE, SND_MOVE, SND_USED
     global SND_BAD, SND_START, SND_YOUR_TURN, SND_INCOMING_HIT, SND_INCOMING_MISS, SND_INCOMING_SUNK
     global EVT_HIT_SOUND, EVT_MISS_SOUND, EVT_SUNK_SOUND
@@ -920,26 +665,9 @@ def main():
     EVT_INCOMING_SUNK = pygame.USEREVENT + 6
 
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+    font_sm = pygame.font.SysFont("segoeui", 22, bold=False)
+    font_md = pygame.font.SysFont("segoeui", 28, bold=False)
     pygame.display.set_caption("EchoFleet Battleship")
-
-    seadoh_path = _find_seadoh_font()
-    if seadoh_path:
-        print(f"[font] Using Seadoh from: {seadoh_path}")
-    else:
-        print("[font] Seadoh not found — drop Seadoh.ttf into the Battleship folder or set SEADOH_FONT env var.")
-        env_path = os.environ.get("SEADOH_FONT")
-        if env_path and Path(env_path).exists():
-            seadoh_path = env_path
-            print(f"[font] Loaded Seadoh from env var: {seadoh_path}")
-
-    font_title   = _make_font(seadoh_path, 32, bold=True)
-    font_label   = _make_font(seadoh_path, 22, bold=True)
-    font_md      = _make_font(seadoh_path, 22, bold=False)
-    font_sm      = _make_font(seadoh_path, 16, bold=False)
-    font_sm_bold = _make_font(seadoh_path, 16, bold=True)
-    font_xs      = _make_font(seadoh_path, 13, bold=False)
-    font_keys    = _make_font(seadoh_path, 14, bold=True)
-    font_axis    = _make_font(seadoh_path, 16, bold=True)
 
     speak_now(
         f"Connected as player {args.player_num + 1}. Placement phase. "
@@ -955,19 +683,13 @@ def main():
     running = True
 
     while running:
-        draw_background()
-        draw_title_bar()
-        draw_grid(LEFT_OFFSET_X, hits_on_me, show_ships=True,
-                  label="YOUR FLEET",
-                  is_active=(phase == "placement" or
-                             (phase == "battle" and inspect_mode == "own")))
-        draw_grid(RIGHT_OFFSET_X, hits_on_opponent, show_ships=False,
-                  label="ENEMY WATERS",
-                  is_active=(phase == "battle" and inspect_mode == "fire" and my_turn))
+        screen.fill(C_BG)
+        draw_grid(LEFT_OFFSET_X, hits_on_me, show_ships=True)
+        draw_grid(RIGHT_OFFSET_X, hits_on_opponent, show_ships=False)
         draw_placement_preview()
         draw_cursor()
-        draw_sidebar()
-        draw_status_panel()
+        draw_labels()
+        draw_status()
         pygame.display.flip()
         clock.tick(60)
 
@@ -1161,34 +883,24 @@ def main():
                                             f"You sunk their {ship_name}!"
                                         )
                                     else:
-                                        last_event = (
-                                            f"You hit at {_coord_label(selected_row, selected_col)}."
-                                        )
+                                        last_event = f"You hit at {_coord_label(selected_row, selected_col)}."
                                         _position_cue(selected_row, selected_col, volume=0.4).play()
                                         pygame.time.set_timer(EVT_HIT_SOUND, 200, loops=1)
-                                        speak_now(
-                                            f"Hit at {_coord_spoken(selected_row, selected_col)}."
-                                        )
+                                        speak_now(f"Hit at {_coord_spoken(selected_row, selected_col)}.")
                                     if status == "win":
                                         phase = "game_over"
                                         game_over_message = "Victory! All enemy ships destroyed."
                                         i_won = True
-                                        speak_now(
-                                            "Victory! All enemy ships destroyed. Escape to quit."
-                                        )
+                                        speak_now("Victory! All enemy ships destroyed. Escape to quit.")
                                         threading.Thread(target=report_win, daemon=True).start()
                                     else:
                                         my_turn = False
                                 elif status == "miss":
                                     hits_on_opponent[selected_row][selected_col] = "miss"
-                                    last_event = (
-                                        f"You missed at {_coord_label(selected_row, selected_col)}."
-                                    )
+                                    last_event = f"You missed at {_coord_label(selected_row, selected_col)}."
                                     _position_cue(selected_row, selected_col, volume=0.4).play()
                                     pygame.time.set_timer(EVT_MISS_SOUND, 200, loops=1)
-                                    speak_now(
-                                        f"Miss at {_coord_spoken(selected_row, selected_col)}."
-                                    )
+                                    speak_now(f"Miss at {_coord_spoken(selected_row, selected_col)}.")
                                     my_turn = False
                         except Exception as e:
                             SND_BAD.play()
