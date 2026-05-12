@@ -15,6 +15,7 @@ venv/
 # Local auth config overrides
 config.py
 games/config.py
+.auth_username_cache.json
 
 # Packaging output
 build/
