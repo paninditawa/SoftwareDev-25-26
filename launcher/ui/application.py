@@ -70,25 +70,31 @@ GAME_LOGIC_DIR = GAMES_DIR / "game_logic"
 BATTLESHIP_DIR = GAMES_DIR / "Battleship"
 
 
-def _script_page(title: str, description: str, path: Path) -> dict[str, object]:
+def _script_page(title: str, description: str, path: Path, icon: str | None = None) -> dict[str, object]:
     # builds a PAGE_META entry for pages that launch an external .py script
-    return {
+    page: dict[str, object] = {
         "title": title,
         "description": description,
         "hint": f"Press the Right Arrow key to play {title}.",
         "type": "script",
         "path": path,
     }
+    if icon:
+        page["display_title"] = f"{icon}  {title}"
+    return page
 
 
-def _simple_page(title: str, description: str, action_hint: str, page_type: str) -> dict[str, str]:
+def _simple_page(title: str, description: str, action_hint: str, page_type: str, icon: str | None = None) -> dict[str, str]:
     # builds a PAGE_META entry for pages that are handled entirely inside the launcher
-    return {
+    page = {
         "title": title,
         "description": description,
         "hint": f"Press the Right Arrow key to {action_hint}.",
         "type": page_type,
     }
+    if icon:
+        page["display_title"] = f"{icon}  {title}"
+    return page
 
 # PAGE_META stores display text and routing info for every page in the left nav
 PAGE_META = {
@@ -98,22 +104,24 @@ PAGE_META = {
         "hint": "Press Right Arrow or Enter to view page controls.",
         "type": "home",
     },
-    "hangman": _script_page("Hangman", "Launches the pygame Hangman game.", GAME_LOGIC_DIR / "hangman_game.py"),
-    "maze": _script_page("Maze Game", "Launches the accessible pygame maze game with spoken movement.", GAME_LOGIC_DIR / "maze_game.py"),
-    "madlibs": _script_page("Mad Libs", "Launches the accessible pygame Mad Libs game.", GAME_LOGIC_DIR / "madlibs_game.py"),
-    "escape": _script_page("Escape Room", "Launches the accessible Escape Room adventure game.", GAME_LOGIC_DIR / "escape_room_game.py"),
-    "connect4": _script_page("Connect 4", "Launches the accessible pygame Connect 4 game.", GAME_LOGIC_DIR / "c4_game.py"),
+    "hangman": _script_page("Hangman", "Launches the pygame Hangman game.", GAME_LOGIC_DIR / "hangman_game.py", icon="🔤"),
+    "maze": _script_page("Maze Game", "Launches the accessible pygame maze game with spoken movement.", GAME_LOGIC_DIR / "maze_game.py", icon="🧭"),
+    "madlibs": _script_page("Mad Libs", "Launches the accessible pygame Mad Libs game.", GAME_LOGIC_DIR / "madlibs_game.py", icon="📝"),
+    "escape": _script_page("Escape Room", "Launches the accessible Escape Room adventure game.", GAME_LOGIC_DIR / "escape_room_game.py", icon="🗝"),
+    "connect4": _script_page("Connect 4", "Launches the accessible pygame Connect 4 game.", GAME_LOGIC_DIR / "c4_game.py", icon="🔴"),
     "apples": _simple_page(
         "Apples to Apples",
         "Host a new game and share your room code, or join a friend's game with their code.",
         "Press enter to launch Apples to Apples",
         "apples",
+        icon="🍎",
     ),
     "battleship": _simple_page(
         "Battleship",
         "Host a new game and share your room code, or join a friend's game with their code.",
         "open Battleship options",
         "battleship",
+        icon="🚢",
     ),
     "scoreboard": _simple_page(
         "Scoreboard",
@@ -205,9 +213,9 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         self.username_var = tk.StringVar()
         self.email_var = tk.StringVar()
         self.password_var = tk.StringVar()
-        self.client_host_var = tk.StringVar(value="127.0.0.1")
-        self.client_port_var = tk.StringVar(value="5555")
         self.battleship_room_code_var = tk.StringVar()
+        self.battleship_game_id: str = ""
+        self.battleship_player_num: int = 0
         self.apples_code_var = tk.StringVar()
         self.apples_name_var = tk.StringVar()
         # apples_token is the player auth token returned by the Apples game server
@@ -218,6 +226,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         self.apples_screen = "home" # sets the current screen within the Apples game
         self.apples_game_id: int | None = None # the current Apples game ID
         self._apples_realtime_subscribed = False # real-time updates for the Apples game
+        self._apples_read_state_button: ctk.CTkButton | None = None # the Read Game State button in the Apples UI
         self._apples_refresh_button: ctk.CTkButton | None = None # the Refresh State button in the Apples UI
         self._apples_helper_label = None # in Apples UI; gives instructions or feedback based on the game state
         self._apples_status_label = None # in Apples UI; shows the current prompt, judge, round, etc.
@@ -236,7 +245,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             border_width=3,
             border_color=APP_BORDER,
         )
-        self.hero.pack(fill="x", padx=24, pady=(20, 12))
+        self.hero.pack(fill="x", padx=20, pady=(12, 8))
 
         self.hero_badge = ctk.CTkLabel(
             self.hero,
@@ -244,30 +253,30 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             text_color=APP_TEXT,
             fg_color=APP_ACCENT_GLOW,
             corner_radius=999,
-            padx=16,
-            pady=7,
-            font=_font(14, bold=True),
+            padx=14,
+            pady=5,
+            font=_font(13, bold=True),
         )
-        self.hero_badge.pack(anchor="w", padx=20, pady=(18, 8))
+        self.hero_badge.pack(anchor="w", padx=18, pady=(12, 6))
 
         self.header = ctk.CTkLabel(
             self.hero,
             text="HelloWorld GameSpace",
             text_color=APP_TEXT,
-            font=_font(36, bold=True),
+            font=_font(32, bold=True),
         )
-        self.header.pack(fill="x", padx=20, pady=(0, 4))
+        self.header.pack(fill="x", padx=18, pady=(0, 2))
 
         self.subheader = ctk.CTkLabel(
             self.hero,
-            text="An accessible arcade launcher with bright, playful controls and roomy layouts",
+            text="",
             text_color=APP_MUTED,
-            font=_font(18, bold=True),
+            font=_font(16, bold=True),
         )
-        self.subheader.pack(fill="x", padx=20, pady=(0, 18))
+        self.subheader.pack(fill="x", padx=18, pady=(0, 6))
 
         self.content = ctk.CTkFrame(self, fg_color=APP_PANEL, corner_radius=24, border_width=3, border_color=APP_BORDER)
-        self.content.pack(fill="both", expand=True, padx=24, pady=(0, 12))
+        self.content.pack(fill="both", expand=True, padx=20, pady=(0, 8))
 
         self.status_label = ctk.CTkLabel(
             self,
@@ -278,11 +287,11 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             text_color=APP_TEXT,
             fg_color=APP_PANEL_ALT,
             corner_radius=18,
-            padx=18,
-            pady=12,
-            font=_font(17, bold=True),
+            padx=16,
+            pady=8,
+            font=_font(15, bold=True),
         )
-        self.status_label.pack(fill="x", padx=24, pady=(0, 16))
+        self.status_label.pack(fill="x", padx=20, pady=(0, 10))
 
         # re-calculate text wrap widths whenever the window is resized
         self.bind("<Configure>", self._on_window_resize, add="+")
@@ -323,16 +332,10 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             except Exception:
                 pass
 
-        # calculate a window size that fills most of the screen, with minimum limits
-        width = max(720, min(screen_width - 40, int(screen_width * 0.96)))
-        height = max(560, min(screen_height - 60, int(screen_height * 0.94)))
-        min_width = min(960, width)
-        min_height = min(640, height)
-        # centre the window on the usable desktop area
-        x = origin_x + max(0, (screen_width - width) // 2)
-        y = origin_y + max(0, (screen_height - height) // 2)
+        min_width = min(960, screen_width)
+        min_height = min(640, screen_height)
 
-        self.geometry(f"{width}x{height}+{x}+{y}")
+        self.geometry(f"{screen_width}x{screen_height}+{origin_x}+{origin_y}")
         self.minsize(min_width, min_height)
 
     def _get_scoreboard(self) -> "Scoreboard | None":
@@ -422,6 +425,9 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         self.bind_all("<KP_Enter>", self._handle_activate, add="+")
         self.bind_all("<space>", self._handle_activate, add="+")
         self.bind_all("<Escape>", self._handle_escape, add="+")
+        self.bind_all("<Control-q>", self._handle_apples_back_home, add="+")
+        self.bind_all("<Control-g>", self._handle_apples_read_state, add="+")
+        self.bind_all("<Control-r>", self._handle_apples_refresh_state, add="+")
         self.bind_all("<f>", self._handle_help, add="+")
         self.bind_all("<j>", self._handle_repeat, add="+")
 
@@ -452,7 +458,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
                 )
                 else:
                     self.speech.announce(
-                        "Apples game help. Use Up and Down arrows to move through controls and cards. Press Enter or Space to select. Press Q to return to Apples home.",
+                        "Apples game help. Use Up and Down arrows to move through controls and cards. Press Enter or Space to select. Press Ctrl+Q to return to Apples home. Press Ctrl+G to read game state and Ctrl+R to refresh state.",
                         interrupt=True, force=True,
                     )
         else:
@@ -472,12 +478,24 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         self.after(5000, self._on_close)
         return "break"
     
-    # allows for players to press Q to return to the Apples homepage
+    # allows for players to press Q or Ctrl+Q to return to the Apples homepage
     def _handle_apples_back_home(self, _event=None):
         if self.current_screen == "menu" and self.current_page_key == "apples" and self.apples_screen == "game":
             self.apples_screen = "home"
             self.select_page("apples", announce=False)
             self.speech.announce("Returned to Apples home page.", interrupt=True, force=True)
+            return "break"
+        return None
+
+    def _handle_apples_read_state(self, _event=None):
+        if self.current_screen == "menu" and self.current_page_key == "apples" and self.apples_screen == "game":
+            self._announce_apples_state()
+            return "break"
+        return None
+
+    def _handle_apples_refresh_state(self, _event=None):
+        if self.current_screen == "menu" and self.current_page_key == "apples" and self.apples_screen == "game":
+            self._refresh_apples_page()
             return "break"
         return None
     
@@ -494,8 +512,8 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             text=(
                 "Apples to Apples home. Use Up and Down arrows to move between controls. "
                 "Press Enter or Space to select. Create a game or type a code and join. "
-                "Press Start Game when everyone is ready. Open Game Page moves to the live game page. "
-                "Press Q during the live game to return here."
+                "Press Start Game when everyone is ready. Say Game Code reads the current game code aloud. "
+                "Press Ctrl+Q during the live game to return here."
             ),
             justify="left",
             anchor="w",
@@ -515,6 +533,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         )
         code_entry.pack(fill="x", pady=(4, 10))
         self.speech.bind_focus(code_entry, "Apples game code field", "Type a game code to join or reopen a game.")
+        self._bind_entry_key_feedback(code_entry)
         self.action_widgets.append(code_entry)
 
 
@@ -530,12 +549,63 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         player_info.pack(anchor="w", pady=(0, 8))
         self.action_widgets.append(player_info)
 
+        top_row = ctk.CTkFrame(self.action_frame, fg_color="transparent")
+        top_row.pack(fill="x", pady=(0, 8))
+        top_row.grid_columnconfigure((0, 1, 2), weight=1)
 
-        self._add_action_button("Read Instructions", self._apples_read_instructions, "Hear Apples to Apples game instructions.")
-        self._add_action_button("Create Game", self._apples_create_game, "Create a new Apples to Apples game code.")
-        self._add_action_button("Join Game", self._apples_join_game, "Join the current Apples to Apples game code.")
-        self._add_action_button("Start Game", self._apples_start_game, "Start the current Apples to Apples game.")
-        self._add_action_button("Open Game Page", lambda: self._apples_open_game(announce=True), "Open the separate live Apples to Apples game page.")
+        read_btn = ctk.CTkButton(
+            top_row,
+            text="Read Instructions",
+            command=self._apples_read_instructions,
+            width=150,
+            **self._button_style_kwargs(),
+        )
+        read_btn.grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        self._register_action_button(read_btn, "Hear Apples to Apples game instructions.")
+
+        create_btn = ctk.CTkButton(
+            top_row,
+            text="Create Game",
+            command=self._apples_create_game,
+            width=150,
+            **self._button_style_kwargs(),
+        )
+        create_btn.grid(row=0, column=1, padx=6, sticky="ew")
+        self._register_action_button(create_btn, "Create a new Apples to Apples game code.")
+
+        join_btn = ctk.CTkButton(
+            top_row,
+            text="Join Game",
+            command=self._apples_join_game,
+            width=150,
+            **self._button_style_kwargs(),
+        )
+        join_btn.grid(row=0, column=2, padx=(6, 0), sticky="ew")
+        self._register_action_button(join_btn, "Join the current Apples to Apples game code.")
+
+        bottom_row = ctk.CTkFrame(self.action_frame, fg_color="transparent")
+        bottom_row.pack(fill="x", pady=(0, 12))
+        bottom_row.grid_columnconfigure((0, 1), weight=1)
+
+        start_btn = ctk.CTkButton(
+            bottom_row,
+            text="Start Game",
+            command=self._apples_start_game,
+            width=150,
+            **self._button_style_kwargs(),
+        )
+        start_btn.grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        self._register_action_button(start_btn, "Start the current Apples to Apples game.")
+
+        say_btn = ctk.CTkButton(
+            bottom_row,
+            text="Say Game Code",
+            command=self._apples_say_game_code,
+            width=150,
+            **self._button_style_kwargs(),
+        )
+        say_btn.grid(row=0, column=1, padx=(6, 0), sticky="ew")
+        self._register_action_button(say_btn, "Hear the current Apples to Apples game code spoken aloud.")
 
 
         game = self._current_apples_game()
@@ -622,7 +692,8 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         helper = ctk.CTkLabel(
             self.action_frame,
             text=(
-                "Live Apples game page. Press Q to return to Apples home. "
+                "Live Apples game page. Press Ctrl+Q to return to Apples home. "
+                "Press Ctrl+G to read game state, or Ctrl+R to refresh state. "
                 "Use Up and Down arrows to move between controls. Press Enter or Space to select."
             ),
             justify="left",
@@ -641,6 +712,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         repeat_button = ctk.CTkButton(top_row, text="Read Game State", command=self._announce_apples_state, **self._button_style_kwargs())
         repeat_button.grid(row=0, column=0, padx=(6, 0), sticky="ew")
         self._register_action_button(repeat_button, "Hear the current round, prompt, and role.")
+        self._apples_read_state_button = repeat_button
 
 
         refresh_button = ctk.CTkButton(top_row, text="Refresh State", command=self._refresh_apples_page, **self._button_style_kwargs())
@@ -680,7 +752,8 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             text=(
                 f"Code: {game['code']}\n"
                 f"Phase: {game['phase']}\n"
-                f"Last update: {game['last_msg']}"
+                f"Last update: {game['last_msg']}\n"
+                "Press Ctrl+R to update the state and Ctrl+G to read this again."
             ),
             justify="left",
             anchor="w",
@@ -707,7 +780,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
 
 
         if not me:
-            self._show_action_info("You have not joined this game yet. Press Q to return home and join the game.")
+            self._show_action_info("You have not joined this game yet. Press Ctrl+Q to return home and join the game.")
             return
 
 
@@ -715,7 +788,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
 
 
         if game["phase"] == "lobby":
-            self._show_action_info("Game is still in the lobby. Press Q to return home and start the game.")
+            self._show_action_info("Game is still in the lobby. Press Ctrl+Q to return home and start the game.")
             return
 
 
@@ -777,15 +850,16 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         self.speech.announce(
                 "Apples to Apples instructions. "
                 "From the Apples home page, create a game or use the game code, then press enter on the Join Game button. "
-                "Press Start Game when everyone is ready, then open the live game page. "
+                "Press Say Game Code to hear the current code spoken aloud. "
+                "Press Start Game when everyone is ready. "
                 "On the live game page, use Up and Down arrows to move between buttons and cards. "
                 "Press Enter or Space to select the focused button or card. "
                 "If you are a player, pressing enter or a space on a card submits it immediately. "
                 "If you are the judge, choose the winning card. "
                 "You may also choose No Point This Round to skip awarding a point. "
-                "Use Read Game State to hear the current round, prompt, judge, role, and phase. "
-                "Use Refresh State to reload the latest game data from the server. "
-                "Press Q at any time on the live game page to return to the Apples home page.",
+                "Press Ctrl+G to hear the current round, prompt, judge, role, and phase. "
+                "Press Ctrl+R to reload the latest game data from the server. "
+                "Press Ctrl+Ctrl+Q at any time on the live game page to return to the Apples home page.",
             interrupt=True,
             force=True,
         )
@@ -801,6 +875,28 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         self.after(100, self._focus_apples_game_default)
         if announce:
             self.after(180, self._announce_apples_state)
+
+    def _apples_say_game_code(self) -> None:
+        code = self.apples_code_var.get().strip().upper()
+        if not code:
+            self.speech.announce("Enter a game code to hear it spoken.", interrupt=True, force=True)
+            return
+        char_names = {
+            ".": "dot",
+            "@": "at",
+            "-": "dash",
+            "_": "underscore",
+            "!": "exclamation",
+            "#": "hash",
+            "$": "dollar",
+            "%": "percent",
+            "&": "and",
+            "+": "plus",
+            "=": "equals",
+            " ": "space",
+        }
+        spoken_chars = [char_names.get(ch, ch) for ch in code]
+        self.speech.announce(f"Apples game code is {' '.join(spoken_chars)}.", interrupt=True, force=True)
 
 
     def _focus_apples_game_default(self) -> None:
@@ -831,7 +927,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         is_judge = bool(game.get("judge_pid")) and me and int(me["id"]) == int(game["judge_pid"])
         role = "the judge" if is_judge else "a player"
         self.speech.announce(
-            f"Round {game['round_num']}. Prompt: {game['green'] or 'none'}. Judge: {judge_name}. You are {role}. Phase: {game['phase']}.",
+            f"Round {game['round_num']}. Prompt: {game['green'] or 'none'}. Judge: {judge_name}. You are {role}. Phase: {game['phase']}. Press Ctrl+R to update the state and Ctrl+G to read it again.",
             interrupt=True,
             force=True,
         )

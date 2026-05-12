@@ -71,7 +71,11 @@ class NavigationMixin:
         if self.current_screen != "menu":
             return None
         if self._is_text_entry(self.focus_get()):
-            return None  # let left arrow move the text cursor inside fields
+            if self.current_page_key == "apples":
+                self.nav_mode = True
+                self._sync_keyboard_focus()
+                return "break"
+            return None
         self.nav_mode = True
         self._sync_keyboard_focus()
         return "break"
@@ -85,14 +89,12 @@ class NavigationMixin:
             except (AttributeError, IndexError):
                 pass
             return None
-        # Right arrow: move focus to the action panel (right column) if any buttons exist.
+        # Right arrow: move focus to the action panel (right column) if any interactive targets exist.
         if self.current_screen != "menu":
             return None
         if self._is_text_entry(self.focus_get()):
-            return None  # let right arrow move the text cursor inside fields
-        if self.action_buttons:
-            self.nav_mode = False
-            self._sync_keyboard_focus()
+            return None
+        if self._focus_first_action_target():
             return "break"
         self.speech.announce("No action buttons on this page.", interrupt=True, force=True)
         return "break"
@@ -109,6 +111,8 @@ class NavigationMixin:
                 else:
                     self.speech.announce("No action buttons on this page.", interrupt=True, force=True)
                 return "break"
+            if self._is_text_entry(self.focus_get()):
+                return None
             if self.action_buttons:
                 # In the action pane: invoke the highlighted action button.
                 self.action_buttons[self.action_index].invoke()
@@ -141,7 +145,9 @@ class NavigationMixin:
         if self.current_screen != "menu":
             return None
         if self._is_text_entry(self.focus_get()):
-            return None  # let Up/Down work normally inside text fields
+            if self.current_page_key in {"apples", "battleship"}:
+                return self._move_action_selection(delta)
+            return None
         if self.nav_mode:
             return self._move_menu_selection(delta)
         return self._move_action_selection(delta)
@@ -151,7 +157,11 @@ class NavigationMixin:
         if widget is None:
             return False
         try:
-            return isinstance(widget, tk.Entry) or widget.winfo_class() in {"Entry", "TEntry"}
+            return (
+                isinstance(widget, tk.Entry)
+                or isinstance(widget, ctk.CTkEntry)
+                or widget.winfo_class() in {"Entry", "TEntry", "CTkEntry"}
+            )
         except Exception:
             return False
 
@@ -172,15 +182,42 @@ class NavigationMixin:
         return "break"
 
     def _move_action_selection(self, delta: int):
-        # Move the highlight among the right-column action buttons.
-        if not self.action_buttons:
-            self.speech.announce("No action buttons on this page.", interrupt=True, force=True)
+        # Move the highlight among the right-column action controls.
+        targets = [
+            widget
+            for widget in self.action_widgets
+            if widget is not None and (self._is_text_entry(widget) or hasattr(widget, "invoke"))
+        ]
+        if not targets:
+            self.speech.announce("No action controls on this page.", interrupt=True, force=True)
             return "break"
-        if len(self.action_buttons) <= 1:
-            # Only one button — stay in nav_mode rather than endlessly cycling.
+        if len(targets) <= 1:
+            # Only one interactive item — fall back to the nav pane instead of cycling endlessly.
             self.nav_mode = True
             return self._move_menu_selection(delta)
-        self.action_index = (self.action_index + delta) % len(self.action_buttons)
+
+        focus = self.focus_get()
+        if focus in targets:
+            current_index = targets.index(focus)
+        elif self._is_text_entry(focus):
+            current_index = next((i for i, widget in enumerate(targets) if self._is_text_entry(widget)), 0)
+        elif self.action_buttons and self.action_buttons[self.action_index] in targets:
+            current_index = targets.index(self.action_buttons[self.action_index])
+        else:
+            current_index = 0
+
+        next_index = (current_index + delta) % len(targets)
+        target = targets[next_index]
+
+        if self._is_text_entry(target):
+            try:
+                target.focus_force()
+            except Exception:
+                target.focus_set()
+            return "break"
+
+        if target in self.action_buttons:
+            self.action_index = self.action_buttons.index(target)
         self.nav_mode = False
         self._sync_keyboard_focus()
         return "break"
@@ -197,7 +234,12 @@ class NavigationMixin:
                 continue
 
             if self._is_text_entry(widget):
-                widget.focus_set()
+                self.nav_mode = False
+                self.action_index = 0
+                try:
+                    widget.focus_force()
+                except Exception:
+                    widget.focus_set()
                 return True
 
             if hasattr(widget, "invoke"):
@@ -211,6 +253,7 @@ class NavigationMixin:
                     self.action_index = self.action_buttons.index(widget)
                     self._sync_keyboard_focus()
                 else:
+                    self.nav_mode = False
                     widget.focus_set()
                 return True
 
@@ -279,52 +322,65 @@ class NavigationMixin:
 
         # Left navigation panel.
         nav = ctk.CTkFrame(root, width=320, **self._surface_style_kwargs())
-        nav.grid(row=0, column=0, sticky="nsw", padx=(18, 10), pady=18)
+        nav.grid(row=0, column=0, sticky="nsw", padx=(14, 8), pady=14)
         nav.grid_propagate(False)
 
         # Right details panel.
         details = ctk.CTkFrame(root, fg_color=APP_PANEL, corner_radius=22, border_width=2, border_color=APP_BORDER)
-        details.grid(row=0, column=1, sticky="nsew", padx=(10, 18), pady=18)
+        details.grid(row=0, column=1, sticky="nsew", padx=(8, 14), pady=14)
         details.grid_columnconfigure(0, weight=1)
         details.grid_rowconfigure(2, weight=1)
 
         # Welcome message at the top of the nav panel.
         mode_prefix = "Signed in as"
         display_name = self.auth_session.username or self.auth_session.email
-        welcome = ctk.CTkLabel(nav, text=f"{mode_prefix} {display_name}", wraplength=250, justify="left", text_color=APP_TEXT, font=_font(18, bold=True))
-        welcome.pack(anchor="w", padx=16, pady=(16, 10))
+        welcome = ctk.CTkLabel(nav, text=f"{mode_prefix} {display_name}", wraplength=250, justify="left", text_color=APP_TEXT, font=_font(16, bold=True))
+        welcome.pack(anchor="w", padx=14, pady=(12, 8))
 
         # Short navigation hint beneath the welcome label.
         nav_text = "Use Up/Down arrows to change pages. Press Left/Right arrows to move between the page list and the details pane."
-        self._nav_help_label = ctk.CTkLabel(nav, text=nav_text, justify="left", wraplength=250, text_color=APP_MUTED, font=_font(15, bold=True))
-        self._nav_help_label.pack(anchor="w", padx=16, pady=(0, 12))
+        self._nav_help_label = ctk.CTkLabel(nav, text=nav_text, justify="left", wraplength=250, text_color=APP_MUTED, font=_font(14, bold=True))
+        self._nav_help_label.pack(anchor="w", padx=14, pady=(0, 8))
 
         ctk.CTkLabel(
             nav,
             text="GAME SELECT",
             text_color=APP_FOCUS,
             font=_font(14, bold=True),
-        ).pack(anchor="w", padx=16, pady=(4, 8))
+        ).pack(anchor="w", padx=14, pady=(2, 4))
+
+        nav_button_style = dict(self._button_style_kwargs())
+        nav_button_style.update({
+            "height": 38,
+            "font": _font(14, bold=True),
+        })
 
         # Create one nav button per page and register it in the nav_buttons dictionary.
         for key in self.menu_order:
             title = self.page_meta[key]["title"]
-            button = ctk.CTkButton(nav, text=title, anchor="w", command=lambda page=key: self.select_page(page, announce=True), **self._button_style_kwargs())
-            button.pack(fill="x", padx=16, pady=4)
+            display_title = self.page_meta[key].get("display_title", title)
+            button = ctk.CTkButton(
+                nav,
+                text=display_title,
+                anchor="w",
+                command=lambda page=key: self.select_page(page, announce=True),
+                **nav_button_style,
+            )
+            button.pack(fill="x", padx=14, pady=2)
             self.speech.bind_focus(button, title, self.page_meta[key]["hint"])
             self._bind_tab_aliases(button)
             self.nav_buttons[key] = button
 
         # Page title and description labels inside the details pane.
-        self.detail_title = ctk.CTkLabel(details, text="", text_color=APP_TEXT, font=_font(28, bold=True))
-        self.detail_title.grid(row=0, column=0, sticky="w", padx=24, pady=(24, 8))
+        self.detail_title = ctk.CTkLabel(details, text="", text_color=APP_TEXT, font=_font(26, bold=True))
+        self.detail_title.grid(row=0, column=0, sticky="w", padx=20, pady=(18, 6))
 
-        self.detail_body = ctk.CTkLabel(details, text="", wraplength=self._content_wraplength, justify="left", anchor="w", text_color=APP_MUTED, font=_font(16, bold=True))
-        self.detail_body.grid(row=1, column=0, sticky="w", padx=24, pady=(0, 16))
+        self.detail_body = ctk.CTkLabel(details, text="", wraplength=self._content_wraplength, justify="left", anchor="w", text_color=APP_MUTED, font=_font(15, bold=True))
+        self.detail_body.grid(row=1, column=0, sticky="w", padx=20, pady=(0, 12))
 
         # Scrollable frame where game-specific action buttons and inputs are shown.
         self.action_frame = ctk.CTkScrollableFrame(details, fg_color=APP_PANEL_ALT, corner_radius=18, border_width=1, border_color=APP_BORDER)
-        self.action_frame.grid(row=2, column=0, sticky="nsew", padx=24, pady=(0, 24))
+        self.action_frame.grid(row=2, column=0, sticky="nsew", padx=20, pady=(0, 20))
         self.action_frame.grid_columnconfigure(0, weight=1)
 
         # Load the last page (or home) and then sync focus after a short delay.
@@ -344,7 +400,7 @@ class NavigationMixin:
         for key, button in self.nav_buttons.items():
             self._style_nav_button(key, button)
         meta = self.page_meta[page_key]
-        self.detail_title.configure(text=meta["title"])
+        self.detail_title.configure(text=meta.get("display_title", meta["title"]))
         self.detail_body.configure(text=meta["description"])
         # Rebuild the right-hand action panel for the new page.
         self._render_actions(page_key)

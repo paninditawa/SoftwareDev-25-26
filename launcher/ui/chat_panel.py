@@ -5,6 +5,7 @@ Includes keyboard navigation, screen reader announcements, and message updates.
 from __future__ import annotations
 
 import tkinter as tk
+from datetime import datetime
 
 import customtkinter as ctk
 
@@ -18,6 +19,7 @@ from launcher.ui.theme import (
     APP_MUTED,
     APP_PANEL,
     APP_PANEL_ALT,
+    APP_PANEL_RAISED,
     APP_TEXT,
     _font,
 )
@@ -43,30 +45,39 @@ class ChatPanel(ctk.CTkFrame):
         self.username = username
         self.game_type = game_type
         self.last_message_ids: set[str] = set()
+        self._rendered_message_ids: set[str] = set()
+        self._is_showing_empty: bool = False
+        self._message_log: list[tuple[str, str]] = []  # (speaker_label, content) for screen reader
         self.polling_id = None
         self._build_ui()
         self._start_polling()
 
     def _build_ui(self) -> None:
         """Build the chat UI layout."""
-        # Title with screen reader label
+        # Title bar
         title = ctk.CTkLabel(
             self,
             text="Community Chat",
             font=_font(24, True),
             text_color=APP_TEXT,
         )
-        title.pack(pady=(12, 6), padx=14, anchor="w")
+        title.pack(pady=(12, 4), padx=14, anchor="w")
 
-        subtitle = ctk.CTkLabel(
+        # Channel header bar — mimics a real game lobby chat channel
+        channel_bar = ctk.CTkFrame(
             self,
-            text="A bright, easy-to-read space for players to talk strategy and say hello.",
-            font=_font(13),
-            text_color=APP_MUTED,
-            wraplength=640,
-            justify="left",
+            fg_color=APP_PANEL,
+            corner_radius=12,
+            border_width=1,
+            border_color=APP_BORDER,
         )
-        subtitle.pack(pady=(0, 10), padx=14, anchor="w")
+        channel_bar.pack(fill="x", padx=14, pady=(0, 8))
+        ctk.CTkLabel(
+            channel_bar, text="Live", text_color="#22c55e", font=_font(12)
+        ).pack(side="left", padx=(12, 6), pady=8)
+        ctk.CTkLabel(
+            channel_bar, text="general  |  All players", text_color=APP_TEXT, font=_font(13)
+        ).pack(side="left", pady=8)
 
         # Messages display area (read-only text widget for accessibility)
         self.messages_frame = ctk.CTkFrame(
@@ -139,6 +150,7 @@ class ChatPanel(ctk.CTkFrame):
         self.input_field.pack(side="left", fill="both", expand=True, padx=(12, 8), pady=12)
         self.input_field.bind("<Return>", self._on_send_message)
         self.input_field.bind("<Control-r>", lambda e: self._read_new_messages())  # Read new messages
+        self.input_field.bind("<space>", self._on_entry_space)
         self._bind_entry_key_feedback(self.input_field)
 
         self.send_btn = ctk.CTkButton(
@@ -191,81 +203,122 @@ class ChatPanel(ctk.CTkFrame):
         # Poll every 2 seconds
         self.polling_id = self.after(2000, self._poll_messages)
 
+    def _format_timestamp(self, created_at: str) -> str:
+        """Convert a Supabase ISO timestamp to a short 'H:MM AM/PM' string."""
+        try:
+            ts = created_at
+            if ts.endswith("Z"):
+                ts = ts[:-1] + "+00:00"
+            if "." in ts:
+                dot = ts.index(".")
+                # find the timezone offset that follows the microseconds
+                tz = max(ts.rfind("+", dot), ts.rfind("-", dot))
+                ts = ts[:dot] + (ts[tz:] if tz > dot else "")
+            dt = datetime.fromisoformat(ts)
+            hour = dt.hour % 12 or 12
+            return f"{hour}:{dt.minute:02d} {'AM' if dt.hour < 12 else 'PM'}"
+        except Exception:
+            return ""
+
     def _display_messages(self, messages: list[dict]) -> None:
-        """Display messages in the UI."""
-        # Clear old messages
-        for widget in self.messages_inner.winfo_children():
-            widget.destroy()
-
+        """Incrementally update the message list — only renders new entries."""
         new_message_count = 0
+
         if not messages:
-            empty_state = ctk.CTkLabel(
-                self.messages_inner,
-                text="No messages yet. Start the conversation or wait for others to join.",
-                font=_font(12),
-                text_color=APP_TEXT,
-                fg_color=APP_PANEL,
-                corner_radius=14,
-                padx=14,
-                pady=12,
-                wraplength=560,
-                justify="left",
-            )
-            empty_state.pack(anchor="w", padx=8, pady=8, fill="x")
-            self.last_message_ids.clear()
-        else:
-            for msg in messages:
-                msg_id = msg.get("id")
-                if msg_id and msg_id not in self.last_message_ids:
-                    new_message_count += 1
-
-                username = msg.get("username", "Unknown")
-                content = msg.get("content", "")
-                is_own = msg.get("user_id") == self.user_id
-
-                bubble = ctk.CTkFrame(
+            if not self._is_showing_empty:
+                for widget in self.messages_inner.winfo_children():
+                    widget.destroy()
+                self._rendered_message_ids.clear()
+                self._message_log.clear()
+                ctk.CTkLabel(
                     self.messages_inner,
-                    fg_color=APP_PANEL if is_own else APP_BG,
-                    corner_radius=16,
-                    border_width=1,
-                    border_color=APP_ACCENT if is_own else APP_BORDER,
-                )
-                bubble.pack(anchor="w", padx=8, pady=6, fill="x")
-
-                speaker = ctk.CTkLabel(
-                    bubble,
-                    text=username,
-                    font=_font(13, True),
-                    text_color=APP_ACCENT if is_own else APP_TEXT,
-                    anchor="w",
-                )
-                speaker.pack(anchor="w", padx=12, pady=(10, 2))
-
-                msg_label = ctk.CTkLabel(
-                    bubble,
-                    text=content,
+                    text="No messages yet — be the first to say hello!",
                     font=_font(13),
-                    text_color=APP_TEXT,
+                    text_color=APP_MUTED,
+                    fg_color=APP_PANEL,
+                    corner_radius=14,
+                    padx=14,
+                    pady=14,
                     wraplength=560,
                     justify="left",
-                    anchor="w",
-                )
-                msg_label.pack(anchor="w", padx=12, pady=(0, 10), fill="x")
+                ).pack(anchor="w", padx=8, pady=8, fill="x")
+                self._is_showing_empty = True
+            self.last_message_ids.clear()
+            return
 
-            self.last_message_ids = {msg.get("id") for msg in messages if msg.get("id")}
+        # Remove the empty-state placeholder when real messages arrive.
+        if self._is_showing_empty:
+            for widget in self.messages_inner.winfo_children():
+                widget.destroy()
+            self._is_showing_empty = False
+            self._message_log.clear()
+
+        for msg in messages:
+            msg_id = msg.get("id")
+
+            # Count messages that weren't in the previous poll.
+            if msg_id and msg_id not in self.last_message_ids:
+                new_message_count += 1
+
+            # Skip messages already drawn on screen.
+            if msg_id in self._rendered_message_ids:
+                continue
+
+            username = msg.get("username", "Unknown")
+            content = msg.get("content", "")
+            is_own = msg.get("user_id") == self.user_id
+            timestamp = self._format_timestamp(msg.get("created_at", ""))
+            # Use full username in the log so screen reader readback is unambiguous.
+            speaker_label = f"{username} (you)" if is_own else username
+
+            bubble = ctk.CTkFrame(
+                self.messages_inner,
+                fg_color=APP_PANEL_RAISED if is_own else APP_PANEL,
+                corner_radius=16,
+                border_width=1,
+                border_color=APP_ACCENT if is_own else APP_BORDER,
+            )
+            bubble.pack(anchor="e" if is_own else "w", padx=8, pady=4, fill="x")
+
+            # Header row: username + timestamp
+            header_row = ctk.CTkFrame(bubble, fg_color="transparent")
+            header_row.pack(fill="x", padx=12, pady=(8, 2))
+            ctk.CTkLabel(
+                header_row,
+                text="You" if is_own else username,
+                font=_font(13),
+                text_color=APP_ACCENT if is_own else APP_TEXT,
+                anchor="w",
+            ).pack(side="left")
+            if timestamp:
+                ctk.CTkLabel(
+                    header_row,
+                    text=timestamp,
+                    font=_font(11),
+                    text_color=APP_MUTED,
+                    anchor="e",
+                ).pack(side="right")
+
+            ctk.CTkLabel(
+                bubble,
+                text=content,
+                font=_font(13),
+                text_color=APP_TEXT,
+                wraplength=520,
+                justify="left",
+                anchor="w",
+            ).pack(anchor="w", padx=12, pady=(0, 10), fill="x")
+
+            if msg_id:
+                self._rendered_message_ids.add(msg_id)
+                self._message_log.append((speaker_label, content))
+
+        self.last_message_ids = {msg.get("id") for msg in messages if msg.get("id")}
 
         # Announce new messages
         if new_message_count > 0:
-            if new_message_count == 1:
-                self.speech_manager.announce(
-                    f"1 new message in chat", interrupt=False, force=True
-                )
-            else:
-                self.speech_manager.announce(
-                    f"{new_message_count} new messages in chat",
-                    interrupt=False,
-                    force=True,
-                )
+            label = "1 new message" if new_message_count == 1 else f"{new_message_count} new messages"
+            self.speech_manager.announce(f"{label} in chat", interrupt=False, force=True)
 
         # Auto-scroll to bottom
         self.messages_canvas.yview_moveto(1.0)
@@ -296,38 +349,29 @@ class ChatPanel(ctk.CTkFrame):
                     ".": "dot", "@": "at", "-": "dash", "_": "underscore",
                     "!": "exclamation", "#": "hash", "$": "dollar",
                     "%": "percent", "&": "and", "+": "plus", "=": "equals",
-                    " ": "space",
+                    "'": "apostrophe", ",": "comma", " ": "space",
                 }
                 spoken = char_names.get(event.char, event.char)
                 self.speech_manager.announce(spoken, interrupt=True, force=True)
         entry.bind("<Key>", _on_key, add="+")
 
-    def _read_new_messages(self) -> None:
-        """Read out the current chat messages."""
-        messages = []
-        for widget in self.messages_inner.winfo_children():
-            if isinstance(widget, ctk.CTkLabel):
-                text = widget.cget("text")
-                if text:
-                    messages.append(text)
-                continue
+    def _on_entry_space(self, event) -> str:
+        """Handle spacebar inside the chat input without bubbling to the main app."""
+        entry = event.widget
+        try:
+            if entry.selection_present():
+                entry.delete("sel.first", "sel.last")
+        except Exception:
+            pass
+        entry.insert(tk.INSERT, " ")
+        self.speech_manager.announce("space", interrupt=True, force=True)
+        return "break"
 
-            if isinstance(widget, ctk.CTkFrame):
-                speaker = ""
-                content_parts = []
-                for child in widget.winfo_children():
-                    if isinstance(child, ctk.CTkLabel):
-                        text = child.cget("text")
-                        if text:
-                            if not speaker:
-                                speaker = text
-                            else:
-                                content_parts.append(text)
-                if speaker:
-                    content = " ".join(content_parts).strip()
-                    messages.append(f"{speaker}: {content}" if content else speaker)
-        if messages:
-            self.speech_manager.announce("Chat messages: " + ". ".join(messages), interrupt=True, force=True)
+    def _read_new_messages(self) -> None:
+        """Read out the current chat messages via the structured log (no widget traversal)."""
+        if self._message_log:
+            lines = [f"{speaker}: {content}" for speaker, content in self._message_log]
+            self.speech_manager.announce("Chat messages: " + ". ".join(lines), interrupt=True, force=True)
         else:
             self.speech_manager.announce("No messages in chat yet.", interrupt=True, force=True)
 

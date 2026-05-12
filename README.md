@@ -46,6 +46,10 @@ python -m pip install -r requirements.txt
 
 ### 5) Run the desktop app
 
+To launch through Windows:
+- double click `launch.bat` in project folder.
+
+To launch in termainl, run:
 ```bash
 python launch_gamespace.py
 ```
