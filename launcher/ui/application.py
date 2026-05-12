@@ -66,8 +66,7 @@ from launcher.services.chat_service import ChatService
 REPO_ROOT = Path(__file__).resolve().parents[2]
 # paths to the top-level games folder and its subfolders
 GAMES_DIR = REPO_ROOT / "games"
-GAME_LOGIC_DIR = GAMES_DIR / "game_logic"
-BATTLESHIP_DIR = GAMES_DIR / "Battleship"
+BATTLESHIP_DIR = GAMES_DIR / "battleship"
 
 
 def _script_page(title: str, description: str, path: Path, icon: str | None = None) -> dict[str, object]:
@@ -104,11 +103,11 @@ PAGE_META = {
         "hint": "Press Right Arrow or Enter to view page controls.",
         "type": "home",
     },
-    "hangman": _script_page("Hangman", "Launches the pygame Hangman game.", GAME_LOGIC_DIR / "hangman_game.py", icon="🔤"),
-    "maze": _script_page("Maze Game", "Launches the accessible pygame maze game with spoken movement.", GAME_LOGIC_DIR / "maze_game.py", icon="🧭"),
-    "madlibs": _script_page("Mad Libs", "Launches the accessible pygame Mad Libs game.", GAME_LOGIC_DIR / "madlibs_game.py", icon="📝"),
-    "escape": _script_page("Escape Room", "Launches the accessible Escape Room adventure game.", GAME_LOGIC_DIR / "escape_room_game.py", icon="🗝"),
-    "connect4": _script_page("Connect 4", "Launches the accessible pygame Connect 4 game.", GAME_LOGIC_DIR / "c4_game.py", icon="🔴"),
+    "hangman": _script_page("Hangman", "Launches the pygame Hangman game.", GAMES_DIR / "hangman_game.py", icon="🔤"),
+    "maze": _script_page("Maze Game", "Launches the accessible pygame maze game with spoken movement.", GAMES_DIR / "maze_game.py", icon="🧭"),
+    "madlibs": _script_page("Mad Libs", "Launches the accessible pygame Mad Libs game.", GAMES_DIR / "madlibs_game.py", icon="📝"),
+    "escape": _script_page("Escape Room", "Launches the accessible Escape Room adventure game.", GAMES_DIR / "escape_room_game.py", icon="🗝"),
+    "connect4": _script_page("Connect 4", "Launches the accessible pygame Connect 4 game.", GAMES_DIR / "c4_game.py", icon="🔴"),
     "apples": _simple_page(
         "Apples to Apples",
         "Host a new game and share your room code, or join a friend's game with their code.",

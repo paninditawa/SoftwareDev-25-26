@@ -10,12 +10,12 @@ from pathlib import Path
 
 # paths to each game dir
 REPO_ROOT = Path(__file__).resolve().parent
-BATTLESHIP_DIR = REPO_ROOT / "games" / "Battleship"
-GAME_LOGIC_DIR = REPO_ROOT / "games" / "game_logic"
+BATTLESHIP_DIR = REPO_ROOT / "games" / "battleship"
+GAMES_DIR = REPO_ROOT / "games"
 
 # add both dirs to path so imports work
 sys.path.insert(0, str(BATTLESHIP_DIR))
-sys.path.insert(0, str(GAME_LOGIC_DIR))
+sys.path.insert(0, str(GAMES_DIR))
 
 import unittest
 
