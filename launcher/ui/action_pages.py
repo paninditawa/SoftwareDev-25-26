@@ -21,8 +21,9 @@ import sys
 # Third-party UI toolkit
 import customtkinter as ctk
 
-# Game-data service for Apples to Apples (SQLite-backed)
+# Game-data services
 from launcher.services import apples_service
+from launcher.services import battleship_service
 # Color constants and font helper from the central theme file
 from launcher.ui.theme import (
     APP_BG,
@@ -212,57 +213,22 @@ class ActionsMixin:
         self._register_action_button(open_chat_btn, "Activate to open the chat window.")
 
     def _open_chat_window(self) -> None:
-        # Open chat in a separate window, or raise the existing one if already open.
+        # Open chat in a separate window
         if not self.auth_session:
             self.speech.announce("Please sign in to access chat.", interrupt=True, force=True)
             return
 
-        def _activate_chat_window(win: ctk.CTkToplevel) -> None:
-            # Windows sometimes opens child windows behind the parent; pulse topmost briefly.
-            try:
-                win.deiconify()
-            except Exception:
-                pass
-            try:
-                win.lift()
-            except Exception:
-                pass
-            try:
-                win.focus_force()
-            except Exception:
-                pass
-            try:
-                win.grab_set()
-            except Exception:
-                pass
-            try:
-                win.attributes("-topmost", True)
-                win.after(120, lambda: win.attributes("-topmost", False))
-            except Exception:
-                pass
-
-        # Reuse the existing window instead of stacking new ones.
-        existing = getattr(self, "_chat_window", None)
-        if existing is not None:
-            try:
-                if existing.winfo_exists():
-                    _activate_chat_window(existing)
-                    self.speech.announce("Chat window is already open.", interrupt=True, force=True)
-                    return
-            except Exception:
-                pass
-
         chat_window = ctk.CTkToplevel(self)
         chat_window.title("GameSpace Chat")
-        chat_window.geometry("760x580")
+        chat_window.geometry("760x560")
         chat_window.minsize(640, 480)
         chat_window.configure(fg_color=APP_BG)
         chat_window.resizable(True, True)
-        try:
-            chat_window.transient(self.winfo_toplevel())
-        except Exception:
-            pass
-        self._chat_window = chat_window
+        chat_window.transient(self)
+        chat_window.grab_set()
+        chat_window.lift()
+        chat_window.attributes("-topmost", True)
+        chat_window.after(100, lambda: chat_window.attributes("-topmost", False))
 
         # Create the chat panel in the window
         chat_panel = ChatPanel(
@@ -275,25 +241,12 @@ class ActionsMixin:
         )
         chat_panel.pack(fill="both", expand=True, padx=10, pady=10)
 
-        def _close_chat(_event=None):
-            try:
-                try:
-                    if chat_window.grab_current() is chat_window:
-                        chat_window.grab_release()
-                except Exception:
-                    pass
-                chat_window.destroy()
-            finally:
-                self._chat_window = None
-
-        # Bind close shortcuts and clear cached window reference on close.
-        chat_window.bind("<Control-q>", _close_chat)
-        chat_window.bind("<Escape>", _close_chat)
-        chat_window.protocol("WM_DELETE_WINDOW", _close_chat)
-
-        # Activate now and once more shortly after the window is mapped.
-        _activate_chat_window(chat_window)
-        chat_window.after(60, lambda: _activate_chat_window(chat_window))
+        # Bind Ctrl+Q to close the window
+        chat_window.bind("<Control-q>", lambda e: chat_window.destroy())
+        chat_window.bind("<Control-e>", lambda e: chat_window.focus_force())
+        
+        # Ensure the chat window gets focus
+        chat_window.after(1000, lambda: chat_window.focus_force())
 
         self.speech.announce("Chat window opened. Press tab to enter message, enter to send, ctrl+R to read messages, and Ctrl+Q to close.", interrupt=True, force=True)
 
@@ -316,108 +269,92 @@ class ActionsMixin:
             renderer()
 
     def _render_battleship_actions(self) -> None:
-        # Room-code entry — the host shares this six-character code with their opponent.
-        code_label = ctk.CTkLabel(
+        # Mirrors Apples to Apples: code entry + Create/Join buttons.
+        helper = ctk.CTkLabel(
             self.action_frame,
-            text="Room code - share this with your opponent when hosting, or enter theirs to join:",
+            text="Create a new game to get a room code, then share it. Or enter a code to join your opponent's game.",
             justify="left", anchor="w", wraplength=self._content_wraplength,
         )
-        code_label.pack(anchor="w", pady=(0, 4))
-        code_entry = ctk.CTkEntry(self.action_frame, textvariable=self.battleship_room_code_var, width=200, **self._entry_style_kwargs())
-        code_entry.pack(anchor="w", pady=(0, 14))
-        self.speech.bind_focus(code_entry, "Room code field", "Enter or read out the room code.")
+        helper.pack(fill="x", pady=(0, 10))
+
+        code_label = ctk.CTkLabel(self.action_frame, text="Room code")
+        code_label.pack(anchor="w")
+        code_entry = ctk.CTkEntry(
+            self.action_frame,
+            textvariable=self.battleship_room_code_var,
+            fg_color=APP_ENTRY_BG, border_color=APP_BORDER, text_color=APP_TEXT,
+        )
+        code_entry.pack(fill="x", pady=(4, 10))
+        self.speech.bind_focus(code_entry, "Battleship room code field", "Type a room code or create a new game.")
         self.action_widgets.append(code_entry)
 
-        # Action buttons: host starts server + opens client; join opens client only.
-        self._add_action_button(
-            "Host Game",
-            self._battleship_host,
-            "Starts a new game and starts the server. Your room code will appear in the field above.",
-        )
-        self._add_action_button(
-            "Join Game",
-            self._battleship_join,
-            "Joins an existing game using the room code in the field above.",
-        )
-        self._add_action_button(
-            "Stop Game",
-            self._stop_battleship_server,
-            "Stops the running game server.",
-        )
-        self._add_action_button(
-            "Read Room Code",
-            self._read_room_code,
-            "Press to hear the current room code read aloud.",
-        )
+        button_row = ctk.CTkFrame(self.action_frame, fg_color="transparent")
+        button_row.pack(fill="x", pady=(0, 12))
+        button_row.grid_columnconfigure((0, 1, 2), weight=1)
 
-        # Small informational label showing the host and port the server will use.
-        port_note = ctk.CTkLabel(
-            self.action_frame,
-            text=f"Advanced: server runs on {self.client_host_var.get()}:{self.client_port_var.get()}",
-            text_color=APP_MUTED, font=_font(14, bold=True),
-            justify="left", anchor="w",
-        )
-        port_note.pack(anchor="w", pady=(10, 0))
-        self.action_widgets.append(port_note)
+        create_btn = ctk.CTkButton(button_row, text="Create Game", command=self._battleship_create_game, **self._button_style_kwargs())
+        create_btn.grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        self._register_action_button(create_btn, "Activate to create a new Battleship game and get a room code.")
 
-    def _battleship_host(self) -> None:
-        if self.server_process and self.server_process.poll() is None:
-            self.speech.announce("A game is already running. Stop it first.", interrupt=True, force=True)
+        join_btn = ctk.CTkButton(button_row, text="Join Game", command=self._battleship_join_game, **self._button_style_kwargs())
+        join_btn.grid(row=0, column=1, padx=6, sticky="ew")
+        self._register_action_button(join_btn, "Activate to join the game with the entered room code.")
+
+        read_btn = ctk.CTkButton(button_row, text="Read Room Code", command=self._read_room_code, **self._button_style_kwargs())
+        read_btn.grid(row=0, column=2, padx=(6, 0), sticky="ew")
+        self._register_action_button(read_btn, "Press to hear the current room code read aloud.")
+
+    def _battleship_create_game(self) -> None:
+        if not self.auth_session:
+            self.speech.announce("Please sign in to create a Battleship game.", interrupt=True, force=True)
             return
+        try:
+            code = battleship_service.create_game()
+            self.battleship_room_code_var.set(code)
+            game = battleship_service.get_game(code)
+            game_id = game["id"]
+            user_id = self.auth_session.local_id
+            username = self.auth_session.username or self.auth_session.email
+            player_num = battleship_service.join_game(code, username, user_id)
+            self._launch_battleship_client(code, game_id, player_num)
+            self.speech.announce(
+                f"Game created. Room code is {' '.join(code)}. Share it with your opponent.",
+                interrupt=True, force=True,
+            )
+        except Exception as exc:
+            self._announce_error("Create game failed", str(exc))
 
-        port = self._parse_port()
-        if port is None:
+    def _battleship_join_game(self) -> None:
+        if not self.auth_session:
+            self.speech.announce("Please sign in to join a Battleship game.", interrupt=True, force=True)
             return
-        host = self.client_host_var.get().strip() or "127.0.0.1"
-
-        import hashlib
-        import time as _t
-
-        raw = f"{host}:{port}:{_t.time()}"
-        room_code = hashlib.md5(raw.encode()).hexdigest()[:6].upper()
-        self.battleship_room_code_var.set(room_code)
-
-        server_path = self.battleship_dir / "server.py"
-        self.server_process = subprocess.Popen(
-            [sys.executable, str(server_path), "--host", host, "--port", str(port)],
-            cwd=str(self.battleship_dir),
-        )
-
-        # Cancel any previously scheduled client launch before scheduling a new one
-        if hasattr(self, "_pending_client_after"):
-            self.after_cancel(self._pending_client_after)
-
-        self._pending_client_after = self.after(
-            600, lambda: self._launch_battleship_client(host, port, is_host=True, room_code=room_code)
-        )
-
-        self.speech.announce(
-            f"Game started. Your room code is {' '.join(room_code)}. Share it with your opponent, then tell them to join.",
-            interrupt=True, force=True,
-        )
-
-    def _battleship_join(self) -> None:
-        # Connect to an already-running server using the current host and port settings.
-        port = self._parse_port()
-        if port is None:
+        code = self.battleship_room_code_var.get().strip().upper()
+        if not code:
+            self.speech.announce("Enter a room code to join.", interrupt=True, force=True)
             return
-        host = self.client_host_var.get().strip() or "127.0.0.1"
-        self._launch_battleship_client(host, port, is_host=False)
+        try:
+            user_id = self.auth_session.local_id
+            username = self.auth_session.username or self.auth_session.email
+            player_num = battleship_service.join_game(code, username, user_id)
+            game = battleship_service.get_game(code)
+            game_id = game["id"]
+            self._launch_battleship_client(code, game_id, player_num)
+            self.speech.announce(f"Joined Battleship game {code}.", interrupt=True, force=True)
+        except Exception as exc:
+            self._announce_error("Join failed", str(exc))
 
-    def _launch_battleship_client(self, host: str, port: int, is_host: bool = False, room_code: str = "") -> None:
+    def _launch_battleship_client(self, code: str, game_id: str, player_num: int) -> None:
         client_path = self.battleship_dir / "client.py"
-
         user_id = self.auth_session.local_id if self.auth_session else ""
         username = (self.auth_session.username or self.auth_session.email) if self.auth_session else "Guest"
-
         import os
         env = os.environ.copy()
-
-        # Launch client directly with Python, not through the launcher.
         subprocess.Popen(
             [
                 sys.executable, str(client_path),
-                "--host", host, "--port", str(port),
+                "--game-code", code,
+                "--game-id", game_id,
+                "--player-num", str(player_num),
                 "--user-id", user_id,
                 "--username", username,
                 "--launcher-pid", str(subprocess.os.getpid()),
@@ -425,8 +362,6 @@ class ActionsMixin:
             cwd=str(self.battleship_dir),
             env=env,
         )
-        action = "Hosting" if is_host else "Joining"
-        self.speech.announce(f"{action} Battleship game.", interrupt=True, force=True)
 
     def _launch_script(self, script_path: Path, title: str) -> None:
         # Open any game or tool script as a separate process.
@@ -452,28 +387,10 @@ class ActionsMixin:
 
         threading.Thread(target=_restore_focus, daemon=True).start()
 
-    def _parse_port(self) -> int | None:
-        # Read the port field and return an integer, or announce an error and return None.
-        value = self.client_port_var.get().strip()
-        try:
-            return int(value)
-        except ValueError:
-            self._announce_error("Invalid port", "Port must be a number.")
-            return None
-
-    def _stop_battleship_server(self) -> None:
-        # Terminate the background server process if one is running.
-        if not self.server_process or self.server_process.poll() is not None:
-            self.speech.announce("No game is currently running.", interrupt=True, force=True)
-            return
-        self.server_process.terminate()
-        self.server_process = None
-        self.speech.announce("Game stopped.", interrupt=True, force=True)
-
     def _read_room_code(self) -> None:
         code = self.battleship_room_code_var.get().strip()
         if not code:
-            self.speech.announce("No room code yet. Host a game first.", interrupt=True, force=True)
+            self.speech.announce("No room code yet. Create or join a game first.", interrupt=True, force=True)
             return
         spelled = " ".join(code)
         self.speech.announce(f"Room code is {spelled}.", interrupt=True, force=True)
