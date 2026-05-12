@@ -54,16 +54,16 @@ class LoginMixin:
         if not self.login_focus_order:
             return
         self.login_focus_index = (self.login_focus_index + delta) % len(self.login_focus_order)
-        self._apply_login_widget_focus(self.login_focus_order[self.login_focus_index], announce=True)
+        self._apply_login_widget_focus(self.login_focus_order[self.login_focus_index])
 
-    def _move_to_login_focus(self, index: int, announce: bool = True) -> None:
+    def _move_to_login_focus(self, index: int) -> None:
         # Jump to a specific position in the focus order (used on initial load).
         if not self.login_focus_order:
             return
         self.login_focus_index = index % len(self.login_focus_order)
-        self._apply_login_widget_focus(self.login_focus_order[self.login_focus_index], announce=announce)
+        self._apply_login_widget_focus(self.login_focus_order[self.login_focus_index])
 
-    def _apply_login_widget_focus(self, widget: tk.Widget, announce: bool = True) -> None:
+    def _apply_login_widget_focus(self, widget: tk.Widget) -> None:
         # Give focus to one widget and announce it; behaviour differs for text entries vs buttons.
         self._style_login_buttons()
         # Show the highlight ring when the speed slider is focused; hide it otherwise.
@@ -77,8 +77,7 @@ class LoginMixin:
                 slider_canvas.focus_force()
             except Exception:
                 slider_canvas.focus_set()
-            if announce:
-                self.speech.set_focus("Voice Speed slider", "Press Left or Right to adjust. Press Down to move to the next item.")
+            self.speech.set_focus("Voice Speed slider", "Press Left or Right to adjust. Press Down to move to the next item.")
             return
         if self._is_text_entry(widget):
             # Move the cursor into to text field and announce its label.
@@ -98,8 +97,7 @@ class LoginMixin:
             for name, entry in self.login_entries.items():
                 if entry is widget:
                     lbl, hint = field_labels.get(name, (name + " field", ""))
-                    if announce:
-                        self.speech.set_focus(lbl, hint)
+                    self.speech.set_focus(lbl, hint)
                     break
         else:
             # It is a button — update the action-button index and announce the button label.
@@ -110,8 +108,7 @@ class LoginMixin:
                 pass
             widget.focus_set()
             try:
-                if announce:
-                    self.speech.set_focus(widget.cget("text"), "Press Enter to activate.")
+                self.speech.set_focus(widget.cget("text"), "Press Enter to activate.")
             except Exception:
                 pass
 
@@ -453,25 +450,11 @@ class LoginMixin:
                     return _handler
                 e.bind("<FocusIn>", _make_entry_focus_handler(), add="+")
 
-        first_startup = not getattr(self, "_startup_welcome_announced", False)
-
-        # Start focus on the slider (index 0). On first startup, keep this silent
-        # so the welcome message is the very first spoken output.
-        self.after_idle(lambda: self._move_to_login_focus(0, announce=not first_startup))
-        self.after(150, lambda: self._move_to_login_focus(0, announce=not first_startup))
-        self.after(400, lambda: self._move_to_login_focus(0, announce=not first_startup))
-        if first_startup:
-            # Speak this exact onboarding line once per app launch.
-            self._startup_welcome_announced = True
-            self.speech.current_screen = "Login screen"
-            self.speech.current_summary = "Sign In tab is active. Enter email and password. Use Up and Down arrows to navigate."
-            self.speech.announce(
-                "Hello! Welcome to the HelloWorld Gamespace... To begin you're journey, adjust the voice control settings.",
-                interrupt=True,
-                force=True,
-            )
-        else:
-            self.speech.set_screen("Login screen", "Sign In tab is active. Enter email and password. Use Up and Down arrows to navigate.")
+        # Start focus on the slider (index 0) so users can adjust voice speed immediately.
+        self.after_idle(lambda: self._move_to_login_focus(0))
+        self.after(150, lambda: self._move_to_login_focus(0))
+        self.after(400, lambda: self._move_to_login_focus(0))
+        self.speech.set_screen("Login screen", "Sign In tab is active. Enter email and password. Use Up and Down arrows to navigate.")
 
     def _sign_in(self) -> None:
         # Trigger the shared auth action using sign_in mode.
