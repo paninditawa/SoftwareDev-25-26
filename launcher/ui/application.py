@@ -213,9 +213,9 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         self.username_var = tk.StringVar()
         self.email_var = tk.StringVar()
         self.password_var = tk.StringVar()
-        self.client_host_var = tk.StringVar(value="127.0.0.1")
-        self.client_port_var = tk.StringVar(value="5555")
         self.battleship_room_code_var = tk.StringVar()
+        self.battleship_game_id: str = ""
+        self.battleship_player_num: int = 0
         self.apples_code_var = tk.StringVar()
         self.apples_name_var = tk.StringVar()
         # apples_token is the player auth token returned by the Apples game server
@@ -415,46 +415,17 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         self.action_index = 0
         self.nav_mode = True
 
-    def _event_belongs_to_main_window(self, event) -> bool:
-        """Return True only if the event's widget lives inside this main window.
-
-        bind_all fires for every window in the process, including child
-        Toplevels (e.g. the chat window).  Handlers that affect navigation
-        should be ignored when focus is elsewhere so those windows keep
-        keyboard control to themselves.
-        """
-        try:
-            widget = getattr(event, "widget", None)
-            if widget is None:
-                return False
-            if isinstance(widget, str):
-                try:
-                    widget = self.nametowidget(widget)
-                except Exception:
-                    return False
-            return widget.winfo_toplevel() is self
-        except Exception:
-            # Fail closed: if uncertain, do not route input to launcher handlers.
-            return False
-
     def _bind_global_keys(self) -> None:
-        def _guard(handler):
-            def _wrapped(event):
-                if not self._event_belongs_to_main_window(event):
-                    return None
-                return handler(event)
-            return _wrapped
-
-        self.bind_all("<Up>", _guard(lambda event: self._handle_vertical(-1)), add="+")
-        self.bind_all("<Down>", _guard(lambda event: self._handle_vertical(1)), add="+")
-        self.bind_all("<Left>", _guard(self._handle_left), add="+")
-        self.bind_all("<Right>", _guard(self._handle_right), add="+")
-        self.bind_all("<Return>", _guard(self._handle_activate), add="+")
-        self.bind_all("<KP_Enter>", _guard(self._handle_activate), add="+")
-        self.bind_all("<space>", _guard(self._handle_activate), add="+")
-        self.bind_all("<Escape>", _guard(self._handle_escape), add="+")
-        self.bind_all("<f>", _guard(self._handle_help), add="+")
-        self.bind_all("<j>", _guard(self._handle_repeat), add="+")
+        self.bind_all("<Up>", lambda event: self._handle_vertical(-1), add="+")
+        self.bind_all("<Down>", lambda event: self._handle_vertical(1), add="+")
+        self.bind_all("<Left>", self._handle_left, add="+")
+        self.bind_all("<Right>", self._handle_right, add="+")
+        self.bind_all("<Return>", self._handle_activate, add="+")
+        self.bind_all("<KP_Enter>", self._handle_activate, add="+")
+        self.bind_all("<space>", self._handle_activate, add="+")
+        self.bind_all("<Escape>", self._handle_escape, add="+")
+        self.bind_all("<f>", self._handle_help, add="+")
+        self.bind_all("<j>", self._handle_repeat, add="+")
 
     def _bind_tab_aliases(self, widget: tk.Widget) -> None:
         widget.bind("<Shift-Tab>", lambda event: self._handle_vertical(-1), add="+")
