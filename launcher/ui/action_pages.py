@@ -295,7 +295,7 @@ class ActionsMixin:
         _activate_chat_window(chat_window)
         chat_window.after(60, lambda: _activate_chat_window(chat_window))
 
-        self.speech.announce("Chat window opened. Press Ctrl+Q to close.", interrupt=True, force=True)
+        self.speech.announce("Chat window opened. Press tab to enter message, enter to send, ctrl+R to read messages, and Ctrl+Q to close.", interrupt=True, force=True)
 
     def _render_actions(self, page_key: str) -> None:
         # Called every time the user switches pages; wipes the old panel and draws the new one.

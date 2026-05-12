@@ -70,25 +70,31 @@ GAME_LOGIC_DIR = GAMES_DIR / "game_logic"
 BATTLESHIP_DIR = GAMES_DIR / "Battleship"
 
 
-def _script_page(title: str, description: str, path: Path) -> dict[str, object]:
+def _script_page(title: str, description: str, path: Path, icon: str | None = None) -> dict[str, object]:
     # builds a PAGE_META entry for pages that launch an external .py script
-    return {
+    page: dict[str, object] = {
         "title": title,
         "description": description,
         "hint": f"Press the Right Arrow key to play {title}.",
         "type": "script",
         "path": path,
     }
+    if icon:
+        page["display_title"] = f"{icon}  {title}"
+    return page
 
 
-def _simple_page(title: str, description: str, action_hint: str, page_type: str) -> dict[str, str]:
+def _simple_page(title: str, description: str, action_hint: str, page_type: str, icon: str | None = None) -> dict[str, str]:
     # builds a PAGE_META entry for pages that are handled entirely inside the launcher
-    return {
+    page = {
         "title": title,
         "description": description,
         "hint": f"Press the Right Arrow key to {action_hint}.",
         "type": page_type,
     }
+    if icon:
+        page["display_title"] = f"{icon}  {title}"
+    return page
 
 # PAGE_META stores display text and routing info for every page in the left nav
 PAGE_META = {
@@ -98,22 +104,24 @@ PAGE_META = {
         "hint": "Press Right Arrow or Enter to view page controls.",
         "type": "home",
     },
-    "hangman": _script_page("Hangman", "Launches the pygame Hangman game.", GAME_LOGIC_DIR / "hangman_game.py"),
-    "maze": _script_page("Maze Game", "Launches the accessible pygame maze game with spoken movement.", GAME_LOGIC_DIR / "maze_game.py"),
-    "madlibs": _script_page("Mad Libs", "Launches the accessible pygame Mad Libs game.", GAME_LOGIC_DIR / "madlibs_game.py"),
-    "escape": _script_page("Escape Room", "Launches the accessible Escape Room adventure game.", GAME_LOGIC_DIR / "escape_room_game.py"),
-    "connect4": _script_page("Connect 4", "Launches the accessible pygame Connect 4 game.", GAME_LOGIC_DIR / "c4_game.py"),
+    "hangman": _script_page("Hangman", "Launches the pygame Hangman game.", GAME_LOGIC_DIR / "hangman_game.py", icon="🔤"),
+    "maze": _script_page("Maze Game", "Launches the accessible pygame maze game with spoken movement.", GAME_LOGIC_DIR / "maze_game.py", icon="🧭"),
+    "madlibs": _script_page("Mad Libs", "Launches the accessible pygame Mad Libs game.", GAME_LOGIC_DIR / "madlibs_game.py", icon="📝"),
+    "escape": _script_page("Escape Room", "Launches the accessible Escape Room adventure game.", GAME_LOGIC_DIR / "escape_room_game.py", icon="🗝"),
+    "connect4": _script_page("Connect 4", "Launches the accessible pygame Connect 4 game.", GAME_LOGIC_DIR / "c4_game.py", icon="🔴"),
     "apples": _simple_page(
         "Apples to Apples",
         "Host a new game and share your room code, or join a friend's game with their code.",
         "Press enter to launch Apples to Apples",
         "apples",
+        icon="🍎",
     ),
     "battleship": _simple_page(
         "Battleship",
         "Host a new game and share your room code, or join a friend's game with their code.",
         "open Battleship options",
         "battleship",
+        icon="🚢",
     ),
     "scoreboard": _simple_page(
         "Scoreboard",
@@ -236,7 +244,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             border_width=3,
             border_color=APP_BORDER,
         )
-        self.hero.pack(fill="x", padx=24, pady=(20, 12))
+        self.hero.pack(fill="x", padx=20, pady=(12, 8))
 
         self.hero_badge = ctk.CTkLabel(
             self.hero,
@@ -244,30 +252,30 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             text_color=APP_TEXT,
             fg_color=APP_ACCENT_GLOW,
             corner_radius=999,
-            padx=16,
-            pady=7,
-            font=_font(14, bold=True),
+            padx=14,
+            pady=5,
+            font=_font(13, bold=True),
         )
-        self.hero_badge.pack(anchor="w", padx=20, pady=(18, 8))
+        self.hero_badge.pack(anchor="w", padx=18, pady=(12, 6))
 
         self.header = ctk.CTkLabel(
             self.hero,
             text="HelloWorld GameSpace",
             text_color=APP_TEXT,
-            font=_font(36, bold=True),
+            font=_font(32, bold=True),
         )
-        self.header.pack(fill="x", padx=20, pady=(0, 4))
+        self.header.pack(fill="x", padx=18, pady=(0, 2))
 
         self.subheader = ctk.CTkLabel(
             self.hero,
             text="",
             text_color=APP_MUTED,
-            font=_font(18, bold=True),
+            font=_font(16, bold=True),
         )
-        self.subheader.pack(fill="x", padx=20, pady=(0, 8))
+        self.subheader.pack(fill="x", padx=18, pady=(0, 6))
 
         self.content = ctk.CTkFrame(self, fg_color=APP_PANEL, corner_radius=24, border_width=3, border_color=APP_BORDER)
-        self.content.pack(fill="both", expand=True, padx=24, pady=(0, 12))
+        self.content.pack(fill="both", expand=True, padx=20, pady=(0, 8))
 
         self.status_label = ctk.CTkLabel(
             self,
@@ -278,11 +286,11 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             text_color=APP_TEXT,
             fg_color=APP_PANEL_ALT,
             corner_radius=18,
-            padx=18,
-            pady=12,
-            font=_font(17, bold=True),
+            padx=16,
+            pady=8,
+            font=_font(15, bold=True),
         )
-        self.status_label.pack(fill="x", padx=24, pady=(0, 16))
+        self.status_label.pack(fill="x", padx=20, pady=(0, 10))
 
         # re-calculate text wrap widths whenever the window is resized
         self.bind("<Configure>", self._on_window_resize, add="+")
@@ -517,7 +525,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             text=(
                 "Apples to Apples home. Use Up and Down arrows to move between controls. "
                 "Press Enter or Space to select. Create a game or type a code and join. "
-                "Press Start Game when everyone is ready. Open Game Page moves to the live game page. "
+                "Press Start Game when everyone is ready. Say Game Code reads the current game code aloud. "
                 "Press Q during the live game to return here."
             ),
             justify="left",
@@ -538,6 +546,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         )
         code_entry.pack(fill="x", pady=(4, 10))
         self.speech.bind_focus(code_entry, "Apples game code field", "Type a game code to join or reopen a game.")
+        self._bind_entry_key_feedback(code_entry)
         self.action_widgets.append(code_entry)
 
 
@@ -553,12 +562,11 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         player_info.pack(anchor="w", pady=(0, 8))
         self.action_widgets.append(player_info)
 
-
         self._add_action_button("Read Instructions", self._apples_read_instructions, "Hear Apples to Apples game instructions.")
         self._add_action_button("Create Game", self._apples_create_game, "Create a new Apples to Apples game code.")
         self._add_action_button("Join Game", self._apples_join_game, "Join the current Apples to Apples game code.")
         self._add_action_button("Start Game", self._apples_start_game, "Start the current Apples to Apples game.")
-        self._add_action_button("Open Game Page", lambda: self._apples_open_game(announce=True), "Open the separate live Apples to Apples game page.")
+        self._add_action_button("Say Game Code", self._apples_say_game_code, "Hear the current Apples to Apples game code spoken aloud.")
 
 
         game = self._current_apples_game()
@@ -800,7 +808,8 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         self.speech.announce(
                 "Apples to Apples instructions. "
                 "From the Apples home page, create a game or use the game code, then press enter on the Join Game button. "
-                "Press Start Game when everyone is ready, then open the live game page. "
+                "Press Say Game Code to hear the current code spoken aloud. "
+                "Press Start Game when everyone is ready. "
                 "On the live game page, use Up and Down arrows to move between buttons and cards. "
                 "Press Enter or Space to select the focused button or card. "
                 "If you are a player, pressing enter or a space on a card submits it immediately. "
@@ -824,6 +833,28 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         self.after(100, self._focus_apples_game_default)
         if announce:
             self.after(180, self._announce_apples_state)
+
+    def _apples_say_game_code(self) -> None:
+        code = self.apples_code_var.get().strip().upper()
+        if not code:
+            self.speech.announce("Enter a game code to hear it spoken.", interrupt=True, force=True)
+            return
+        char_names = {
+            ".": "dot",
+            "@": "at",
+            "-": "dash",
+            "_": "underscore",
+            "!": "exclamation",
+            "#": "hash",
+            "$": "dollar",
+            "%": "percent",
+            "&": "and",
+            "+": "plus",
+            "=": "equals",
+            " ": "space",
+        }
+        spoken_chars = [char_names.get(ch, ch) for ch in code]
+        self.speech.announce(f"Apples game code is {' '.join(spoken_chars)}.", interrupt=True, force=True)
 
 
     def _focus_apples_game_default(self) -> None:
