@@ -322,52 +322,65 @@ class NavigationMixin:
 
         # Left navigation panel.
         nav = ctk.CTkFrame(root, width=320, **self._surface_style_kwargs())
-        nav.grid(row=0, column=0, sticky="nsw", padx=(18, 10), pady=18)
+        nav.grid(row=0, column=0, sticky="nsw", padx=(14, 8), pady=14)
         nav.grid_propagate(False)
 
         # Right details panel.
         details = ctk.CTkFrame(root, fg_color=APP_PANEL, corner_radius=22, border_width=2, border_color=APP_BORDER)
-        details.grid(row=0, column=1, sticky="nsew", padx=(10, 18), pady=18)
+        details.grid(row=0, column=1, sticky="nsew", padx=(8, 14), pady=14)
         details.grid_columnconfigure(0, weight=1)
         details.grid_rowconfigure(2, weight=1)
 
         # Welcome message at the top of the nav panel.
         mode_prefix = "Signed in as"
         display_name = self.auth_session.username or self.auth_session.email
-        welcome = ctk.CTkLabel(nav, text=f"{mode_prefix} {display_name}", wraplength=250, justify="left", text_color=APP_TEXT, font=_font(18, bold=True))
-        welcome.pack(anchor="w", padx=16, pady=(16, 10))
+        welcome = ctk.CTkLabel(nav, text=f"{mode_prefix} {display_name}", wraplength=250, justify="left", text_color=APP_TEXT, font=_font(16, bold=True))
+        welcome.pack(anchor="w", padx=14, pady=(12, 8))
 
         # Short navigation hint beneath the welcome label.
         nav_text = "Use Up/Down arrows to change pages. Press Left/Right arrows to move between the page list and the details pane."
-        self._nav_help_label = ctk.CTkLabel(nav, text=nav_text, justify="left", wraplength=250, text_color=APP_MUTED, font=_font(15, bold=True))
-        self._nav_help_label.pack(anchor="w", padx=16, pady=(0, 12))
+        self._nav_help_label = ctk.CTkLabel(nav, text=nav_text, justify="left", wraplength=250, text_color=APP_MUTED, font=_font(14, bold=True))
+        self._nav_help_label.pack(anchor="w", padx=14, pady=(0, 8))
 
         ctk.CTkLabel(
             nav,
             text="GAME SELECT",
             text_color=APP_FOCUS,
             font=_font(14, bold=True),
-        ).pack(anchor="w", padx=16, pady=(4, 8))
+        ).pack(anchor="w", padx=14, pady=(2, 4))
+
+        nav_button_style = dict(self._button_style_kwargs())
+        nav_button_style.update({
+            "height": 38,
+            "font": _font(14, bold=True),
+        })
 
         # Create one nav button per page and register it in the nav_buttons dictionary.
         for key in self.menu_order:
             title = self.page_meta[key]["title"]
-            button = ctk.CTkButton(nav, text=title, anchor="w", command=lambda page=key: self.select_page(page, announce=True), **self._button_style_kwargs())
-            button.pack(fill="x", padx=16, pady=4)
+            display_title = self.page_meta[key].get("display_title", title)
+            button = ctk.CTkButton(
+                nav,
+                text=display_title,
+                anchor="w",
+                command=lambda page=key: self.select_page(page, announce=True),
+                **nav_button_style,
+            )
+            button.pack(fill="x", padx=14, pady=2)
             self.speech.bind_focus(button, title, self.page_meta[key]["hint"])
             self._bind_tab_aliases(button)
             self.nav_buttons[key] = button
 
         # Page title and description labels inside the details pane.
-        self.detail_title = ctk.CTkLabel(details, text="", text_color=APP_TEXT, font=_font(28, bold=True))
-        self.detail_title.grid(row=0, column=0, sticky="w", padx=24, pady=(24, 8))
+        self.detail_title = ctk.CTkLabel(details, text="", text_color=APP_TEXT, font=_font(26, bold=True))
+        self.detail_title.grid(row=0, column=0, sticky="w", padx=20, pady=(18, 6))
 
-        self.detail_body = ctk.CTkLabel(details, text="", wraplength=self._content_wraplength, justify="left", anchor="w", text_color=APP_MUTED, font=_font(16, bold=True))
-        self.detail_body.grid(row=1, column=0, sticky="w", padx=24, pady=(0, 16))
+        self.detail_body = ctk.CTkLabel(details, text="", wraplength=self._content_wraplength, justify="left", anchor="w", text_color=APP_MUTED, font=_font(15, bold=True))
+        self.detail_body.grid(row=1, column=0, sticky="w", padx=20, pady=(0, 12))
 
         # Scrollable frame where game-specific action buttons and inputs are shown.
         self.action_frame = ctk.CTkScrollableFrame(details, fg_color=APP_PANEL_ALT, corner_radius=18, border_width=1, border_color=APP_BORDER)
-        self.action_frame.grid(row=2, column=0, sticky="nsew", padx=24, pady=(0, 24))
+        self.action_frame.grid(row=2, column=0, sticky="nsew", padx=20, pady=(0, 20))
         self.action_frame.grid_columnconfigure(0, weight=1)
 
         # Load the last page (or home) and then sync focus after a short delay.
@@ -387,7 +400,7 @@ class NavigationMixin:
         for key, button in self.nav_buttons.items():
             self._style_nav_button(key, button)
         meta = self.page_meta[page_key]
-        self.detail_title.configure(text=meta["title"])
+        self.detail_title.configure(text=meta.get("display_title", meta["title"]))
         self.detail_body.configure(text=meta["description"])
         # Rebuild the right-hand action panel for the new page.
         self._render_actions(page_key)
