@@ -21,6 +21,18 @@ import sys
 import threading
 from pathlib import Path
 
+from game_theme import (
+    GAME_ACCENT,
+    GAME_BG,
+    GAME_BORDER,
+    GAME_FOCUS,
+    GAME_FONT_FAMILY,
+    GAME_GLOW,
+    GAME_PANEL,
+    GAME_PANEL_ALT,
+    GAME_TEXT,
+)
+
 # Ensure the project root containing `tts.py` is on sys.path.
 _this_file = Path(__file__).resolve()
 for _parent in _this_file.parents:
@@ -56,13 +68,13 @@ HEIGHT = (ROWS + 1) * SQUARESIZE  # extra row at the top for the selector arrow
 SIZE = (WIDTH, HEIGHT)
 
 # Board and UI colors
-BLUE = (27, 76, 127)
-BLACK = (0, 0, 0)
-RED = (198, 88, 0)    # Player 1 piece color
-YELLOW = (0, 113, 128)  # Player 2 piece color
-WHITE = (255, 255, 255)
-BOARD_HOLE = (241, 245, 249)  # background color inside each cell circle
-PIECE_TEXT = (255, 255, 255)  # number label drawn on top of each piece
+BLUE = GAME_BORDER
+BLACK = GAME_TEXT
+RED = GAME_ACCENT      # Player 1 piece color
+YELLOW = GAME_FOCUS    # Player 2 piece color
+WHITE = GAME_PANEL
+BOARD_HOLE = GAME_PANEL_ALT
+PIECE_TEXT = GAME_PANEL
 STARTUP_PROMPT_DELAY_MS = 3500
 FULL_TUTORIAL_TEXT = (
     "Welcome to Connect Four. "
@@ -242,8 +254,8 @@ def announce_column(board, col):
 # -----------------------------
 def draw_board(screen, board, selector_col):
     # Redraw the entire board: background, selector arrow, grid, and pieces.
-    screen.fill(WHITE)
-    piece_font = pygame.font.SysFont("segoeui", 40)
+    screen.fill(GAME_BG)
+    piece_font = pygame.font.SysFont(GAME_FONT_FAMILY, 40, bold=True)
 
     # Triangle arrow above the selected column
     x = selector_col * SQUARESIZE + SQUARESIZE//2

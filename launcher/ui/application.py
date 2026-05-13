@@ -160,6 +160,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         # use the light theme and a dark-blue accent colour
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("dark-blue")
+        self._apply_responsive_scaling()
 
         self.title("HelloWorld GameSpace Launcher")
         self._set_initial_window_size()
@@ -308,6 +309,18 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             Path(__file__).parent.parent, 
             id_token=session.id_token if (session := self.auth_session) else "",)
 
+    def _apply_responsive_scaling(self) -> None:
+        # scale UI consistently across laptops, desktops, and high-DPI displays
+        screen_w = max(1, self.winfo_screenwidth())
+        screen_h = max(1, self.winfo_screenheight())
+        baseline_w, baseline_h = 1920, 1080
+        scale_w = screen_w / baseline_w
+        scale_h = screen_h / baseline_h
+        # apply a slight uplift so typical screens don't feel undersized
+        target_scale = max(1.0, min(1.35, min(scale_w, scale_h) * 1.15))
+        ctk.set_widget_scaling(target_scale)
+        ctk.set_window_scaling(target_scale)
+
     def _set_initial_window_size(self) -> None:
         # start with tkinter's reported screen dimensions as a fallback
         screen_width = self.winfo_screenwidth()
@@ -334,8 +347,18 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         min_width = min(960, screen_width)
         min_height = min(640, screen_height)
 
+        # Fill the usable display area by default so users do not need to manually maximize.
         self.geometry(f"{screen_width}x{screen_height}+{origin_x}+{origin_y}")
         self.minsize(min_width, min_height)
+
+        # Prefer native maximize when available.
+        try:
+            if sys.platform.startswith("win"):
+                self.state("zoomed")
+            else:
+                self.attributes("-zoomed", True)
+        except Exception:
+            pass
 
     def _get_scoreboard(self) -> "Scoreboard | None":
         # create and cache a Scoreboard client on first call; return None if unavailable

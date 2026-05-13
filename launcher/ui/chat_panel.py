@@ -73,7 +73,7 @@ class ChatPanel(ctk.CTkFrame):
         )
         channel_bar.pack(fill="x", padx=14, pady=(0, 8))
         ctk.CTkLabel(
-            channel_bar, text="Live", text_color="#22c55e", font=_font(12)
+            channel_bar, text="Live", text_color="#166534", font=_font(12)
         ).pack(side="left", padx=(12, 6), pady=8)
         ctk.CTkLabel(
             channel_bar, text="general  |  All players", text_color=APP_TEXT, font=_font(13)

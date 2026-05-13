@@ -45,6 +45,20 @@ import sys
 import numpy as np
 from pathlib import Path
 
+from game_theme import (
+    GAME_ACCENT as ACCENT_COLOR,
+    GAME_ACCENT_STRONG as ACCENT_STRONG,
+    GAME_BG as BG_COLOR,
+    GAME_BORDER as PLAYER_COLOR,
+    GAME_FOCUS as EXIT_COLOR,
+    GAME_FONT_FAMILY,
+    GAME_GLOW as WIN_TEXT_COLOR,
+    GAME_MUTED as MUTED_COLOR,
+    GAME_PANEL as FLOOR_COLOR,
+    GAME_PANEL_ALT as WALL_COLOR,
+    GAME_TEXT as TEXT_COLOR,
+)
+
 # Ensure the project root containing `tts.py`
 _this_file = Path(__file__).resolve()
 for _parent in _this_file.parents:
@@ -67,18 +81,6 @@ except ImportError:
 
 # Audio constants
 SAMPLE_RATE = 44100  # sample_rate is samples per second used
-
-# Color configurations matched to the launcher theme
-BG_COLOR      = (246, 247, 255)  # APP_BG
-FLOOR_COLOR   = (255, 253, 248)  # APP_PANEL
-WALL_COLOR    = (28, 45, 74)     # APP_PANEL_ALT
-TEXT_COLOR    = (28, 45, 74)     # APP_TEXT
-MUTED_COLOR   = (0, 0, 0)    # APP_MUTED
-ACCENT_COLOR  = (0, 0, 0)   # APP_ACCENT
-ACCENT_STRONG = (0, 0, 0)   # APP_ACCENT_STRONG
-EXIT_COLOR    = (255, 215, 106)  # APP_ACCENT_GLOW
-PLAYER_COLOR  = (79, 143, 216)   # blue player marker
-WIN_TEXT_COLOR = (187, 222, 251)  # light blue win text
 
 # Screen size configurations; adjustable
 SCREEN_W, SCREEN_H = 820, 720
@@ -229,9 +231,9 @@ class SizeSelectScreen:
         self.min_sz  = 5
         self.max_sz  = 25
         self.done    = False
-        self.font    = pygame.font.SysFont("segoeui", 36, bold=False)
-        self.big     = pygame.font.SysFont("segoeui", 62, bold=False)
-        self.small   = pygame.font.SysFont("segoeui", 28, bold=False)
+        self.font    = pygame.font.SysFont(GAME_FONT_FAMILY, 36, bold=True)
+        self.big     = pygame.font.SysFont(GAME_FONT_FAMILY, 62, bold=True)
+        self.small   = pygame.font.SysFont(GAME_FONT_FAMILY, 28, bold=False)
         self.speech.speak(
             "Welcome to Accessible Maze Game. "
             "Use UP and DOWN arrows to choose maze size. "
@@ -322,9 +324,9 @@ class MazeGame:
         self.cols    = cols
         self.rows    = rows
         self.tile    = min(680 // max(cols, rows), 56)
-        self.font    = pygame.font.SysFont("segoeui", 30, bold=False)
-        self.big     = pygame.font.SysFont("segoeui", 50, bold=False)
-        self.small   = pygame.font.SysFont("segoeui", 24, bold=False)
+        self.font    = pygame.font.SysFont(GAME_FONT_FAMILY, 30, bold=True)
+        self.big     = pygame.font.SysFont(GAME_FONT_FAMILY, 50, bold=True)
+        self.small   = pygame.font.SysFont(GAME_FONT_FAMILY, 24, bold=False)
 
         # Sounds
         self.snd_move    = _make_tone(520,  0.09)
