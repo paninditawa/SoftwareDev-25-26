@@ -46,7 +46,10 @@ jobs:
           python - <<'PY'
           import sys
           from pathlib import Path
-          sys.path.insert(0, str(Path.cwd()))
+          root = Path.cwd()
+          sys.path.insert(0, str(root))
+          # games run from the games/ dir, so game_theme and other shared modules live there
+          sys.path.insert(0, str(root / "games"))
           try:
               import tts
               import games.maze_game
