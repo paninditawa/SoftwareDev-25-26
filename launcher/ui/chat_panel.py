@@ -119,7 +119,7 @@ class ChatPanel(ctk.CTkFrame):
         # Keyboard shortcut hint
         hint = ctk.CTkLabel(
             self,
-            text="Tab to message input. Type message and press Enter to send. Press Ctrl+Q to close window. Press Ctrl+R to read chat messages.",
+            text="Tab to message input. Type message and press Enter to send. Press Escape to close window. Press Ctrl+R to read chat messages.",
             font=_font(11),
             text_color=APP_MUTED,
             wraplength=660,
