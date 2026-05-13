@@ -49,7 +49,7 @@ python -m pip install -r requirements.txt
 To launch through Windows:
 - double click `launch.bat` in project folder.
 
-To launch in termainl, run:
+To launch in terminal, run:
 ```bash
 python launch_gamespace.py
 ```
@@ -65,8 +65,8 @@ python launch_gamespace.py
     - Mad Libs
     - Escape Room
     - Connect 4
-    - Apples to Apples
-    - Battleship
+    - Apples to Apples (online multiplayer via Supabase)
+    - Battleship (online multiplayer via Supabase)
 
 ## Accessibility Notes
 
