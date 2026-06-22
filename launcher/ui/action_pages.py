@@ -218,6 +218,9 @@ class ActionsMixin:
             self.speech.announce("Please sign in to access chat.", interrupt=True, force=True)
             return
 
+        # Suppress focus announcements while the window opens and focus events settle
+        self.speech.suppress_focus_temporarily(700, self)
+
         chat_window = ctk.CTkToplevel(self)
         chat_window.title("GameSpace Chat")
         chat_window.geometry("760x560")
@@ -245,10 +248,19 @@ class ActionsMixin:
         chat_window.bind("<Escape>", lambda e: chat_window.destroy())
         chat_window.bind("<Control-e>", lambda e: chat_window.focus_force())
         
-        # Ensure the chat window gets focus
-        chat_window.after(1000, lambda: chat_window.focus_force())
-
-        self.speech.announce("Chat window opened. Press tab to enter message, enter to send, Ctrl+R to read messages, and Escape to close.", interrupt=True, force=True)
+        # Ensure the chat window gets focus, then announce instructions after focus events settle
+        def _focus_and_announce():
+            chat_window.focus_force()
+            self.speech.announce(
+                "Chat window opened. "
+                "Press Tab to move to the message input. "
+                "Type a message and press Enter to send. "
+                "Press Control R to read chat messages. "
+                "Press Escape to close.",
+                interrupt=True,
+                force=True,
+            )
+        chat_window.after(400, _focus_and_announce)
 
     def _render_actions(self, page_key: str) -> None:
         # Called every time the user switches pages; wipes the old panel and draws the new one.

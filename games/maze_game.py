@@ -45,19 +45,27 @@ import sys
 import numpy as np
 from pathlib import Path
 
+def _hex_to_rgb(value: str) -> tuple[int, int, int]:
+    value = value.lstrip("#")
+    return (int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16))
+
 from game_theme import (
     GAME_ACCENT as ACCENT_COLOR,
     GAME_ACCENT_STRONG as ACCENT_STRONG,
     GAME_BG as BG_COLOR,
-    GAME_BORDER as PLAYER_COLOR,
+    GAME_GLOW as PLAYER_COLOR,
     GAME_FOCUS as EXIT_COLOR,
     GAME_FONT_FAMILY,
     GAME_GLOW as WIN_TEXT_COLOR,
     GAME_MUTED as MUTED_COLOR,
     GAME_PANEL as FLOOR_COLOR,
-    GAME_PANEL_ALT as WALL_COLOR,
+    GAME_ACCENT as WALL_COLOR,
     GAME_TEXT as TEXT_COLOR,
 )
+
+EXIT_COLOR =_hex_to_rgb("#58f14a")
+PLAYER_COLOR = _hex_to_rgb("#155a1a")
+WALL_COLOR = _hex_to_rgb("#1c2d4a")
 
 # Ensure the project root containing `tts.py`
 _this_file = Path(__file__).resolve()
