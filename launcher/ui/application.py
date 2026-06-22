@@ -309,6 +309,19 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             Path(__file__).parent.parent, 
             id_token=session.id_token if (session := self.auth_session) else "",)
 
+        # Maximize after the event loop starts (deferred so Windows honours the call)
+        self.after(150, self._maximize_window)
+
+    def _maximize_window(self) -> None:
+        """Ensure the window is in the maximized state once the event loop is running."""
+        try:
+            if sys.platform.startswith("win"):
+                self.state("zoomed")
+            else:
+                self.attributes("-zoomed", True)
+        except Exception:
+            pass
+
     def _apply_responsive_scaling(self) -> None:
         # scale UI consistently across laptops, desktops, and high-DPI displays
         screen_w = max(1, self.winfo_screenwidth())
@@ -321,44 +334,18 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         ctk.set_widget_scaling(target_scale)
         ctk.set_window_scaling(target_scale)
 
-    def _set_initial_window_size(self) -> None:
-        # start with tkinter's reported screen dimensions as a fallback
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
-        origin_x = 0
-        origin_y = 0
+    def _set_initial_window_size(self):
+        print("_set_initial_window_size called")
 
-        if sys.platform.startswith("win"):
-            try:
-                import ctypes
-                from ctypes import wintypes
+        self.minsize(960, 640)
 
-                rect = wintypes.RECT()
-                SPI_GETWORKAREA = 0x0030
-                # SPI_GETWORKAREA returns the usable desktop area (excludes taskbar)
-                if ctypes.windll.user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(rect), 0):
-                    origin_x = rect.left
-                    origin_y = rect.top
-                    screen_width = rect.right - rect.left
-                    screen_height = rect.bottom - rect.top
-            except Exception:
-                pass
+        def maximize():
+            print("maximize called")
+            self.deiconify()
+            self.update_idletasks()
+            self.state("zoomed")
 
-        min_width = min(960, screen_width)
-        min_height = min(640, screen_height)
-
-        # Fill the usable display area by default so users do not need to manually maximize.
-        self.geometry(f"{screen_width}x{screen_height}+{origin_x}+{origin_y}")
-        self.minsize(min_width, min_height)
-
-        # Prefer native maximize when available.
-        try:
-            if sys.platform.startswith("win"):
-                self.state("zoomed")
-            else:
-                self.attributes("-zoomed", True)
-        except Exception:
-            pass
+        self.after(1000, maximize)
 
     def _get_scoreboard(self) -> "Scoreboard | None":
         # create and cache a Scoreboard client on first call; return None if unavailable

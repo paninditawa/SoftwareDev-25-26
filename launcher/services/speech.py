@@ -84,16 +84,8 @@ class SpeechManager:
         # announce even if repeats, because screen changed
         self.announce(message, interrupt=True, force=True)
 
-    # temporarily silence set_focus announcements (e.g. while a modal opens)
-    def suppress_focus_temporarily(self, duration_ms: int, widget) -> None:
-        self._focus_suppressed = True
-        widget.after(duration_ms, lambda: setattr(self, '_focus_suppressed', False))
-
     # set current focused control info + announce
     def set_focus(self, label: str, hint: str = "") -> None:
-        # skip if suppressed during a modal window transition
-        if getattr(self, '_focus_suppressed', False):
-            return
         # save currently focused control label
         self.current_focus = label
         # build one message from label + optional hint

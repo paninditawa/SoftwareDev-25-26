@@ -66,7 +66,6 @@ from game_theme import (
 EXIT_COLOR =_hex_to_rgb("#58f14a")
 PLAYER_COLOR = _hex_to_rgb("#155a1a")
 WALL_COLOR = _hex_to_rgb("#1c2d4a")
-
 # Ensure the project root containing `tts.py`
 _this_file = Path(__file__).resolve()
 for _parent in _this_file.parents:

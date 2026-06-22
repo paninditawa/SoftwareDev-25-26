@@ -218,9 +218,6 @@ class ActionsMixin:
             self.speech.announce("Please sign in to access chat.", interrupt=True, force=True)
             return
 
-        # Suppress focus announcements while the window opens and focus events settle
-        self.speech.suppress_focus_temporarily(700, self)
-
         chat_window = ctk.CTkToplevel(self)
         chat_window.title("GameSpace Chat")
         chat_window.geometry("760x560")
