@@ -101,7 +101,12 @@ def _is_usable_supabase_key(value: str | None) -> bool:
 
 
 class AuthClient:
-    def __init__(self, supabase_url: str | None, supabase_anon_key: str | None, cache_file: Path | None = None) -> None:
+    def __init__(
+        self,
+        supabase_url: str | None,
+        supabase_anon_key: str | None,
+        cache_file: Path | None = None,
+    ) -> None:
         # Strip trailing slashes from the URL so path joins always work correctly.
         self.supabase_url = supabase_url.rstrip("/") if isinstance(supabase_url, str) else None
         self.supabase_anon_key = supabase_anon_key.strip() if isinstance(supabase_anon_key, str) else None

@@ -20,6 +20,15 @@ import threading
 import queue
 from pathlib import Path
 
+from game_theme import (
+    GAME_ACCENT as ACCENT_COLOR,
+    GAME_BG as BG_COLOR,
+    GAME_FOCUS as FOCUS_COLOR,
+    GAME_FONT_FAMILY,
+    GAME_MUTED as MUTED_COLOR,
+    GAME_TEXT as TEXT_COLOR,
+)
+
 # Import the Text to Speech for accessibility improvement.
 _this_file = Path(__file__).resolve()
 for _parent in _this_file.parents:
@@ -524,8 +533,8 @@ class EscapeRoomGame:
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
         pygame.display.set_caption("Escape Room")
         self.clock = pygame.time.Clock()
-        self.font = pygame.font.SysFont(None, 32)
-        self.small_font = pygame.font.SysFont(None, 24)
+        self.font = pygame.font.SysFont(GAME_FONT_FAMILY, 32, bold=True)
+        self.small_font = pygame.font.SysFont(GAME_FONT_FAMILY, 24, bold=False)
 
         # Pre-generate all sound effects so there's no lag during gameplay
         self.snd_good = _chord([523, 659, 784], 0.35)           # C major chord: correct answer
@@ -555,14 +564,13 @@ class EscapeRoomGame:
         Shows the current status text and a red dot when listening.
         Sighted players or developers can see what's happening at a glance.
         """
-        self.screen.fill((10, 10, 15))
-        surf = self.font.render(self.status_text, True, (180, 180, 200))
+        self.screen.fill(BG_COLOR)
+        surf = self.font.render(self.status_text, True, TEXT_COLOR)
         self.screen.blit(surf, (SCREEN_W // 2 - surf.get_width() // 2, SCREEN_H // 2 - 40))
 
         if self.listening:
-            # Red recording indicator
-            pygame.draw.circle(self.screen, (220, 60, 60), (SCREEN_W // 2, SCREEN_H // 2 + 30), 12)
-            s = self.small_font.render("Listening...", True, (220, 60, 60))
+            pygame.draw.circle(self.screen, FOCUS_COLOR, (SCREEN_W // 2, SCREEN_H // 2 + 30), 12)
+            s = self.small_font.render("Listening...", True, ACCENT_COLOR)
             self.screen.blit(s, (SCREEN_W // 2 - s.get_width() // 2, SCREEN_H // 2 + 50))
 
         pygame.display.flip()

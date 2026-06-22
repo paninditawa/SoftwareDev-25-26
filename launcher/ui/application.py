@@ -66,8 +66,7 @@ from launcher.services.chat_service import ChatService
 REPO_ROOT = Path(__file__).resolve().parents[2]
 # paths to the top-level games folder and its subfolders
 GAMES_DIR = REPO_ROOT / "games"
-GAME_LOGIC_DIR = GAMES_DIR / "game_logic"
-BATTLESHIP_DIR = GAMES_DIR / "Battleship"
+BATTLESHIP_DIR = GAMES_DIR / "battleship"
 
 
 def _script_page(title: str, description: str, path: Path, icon: str | None = None) -> dict[str, object]:
@@ -104,11 +103,11 @@ PAGE_META = {
         "hint": "Press Right Arrow or Enter to view page controls.",
         "type": "home",
     },
-    "hangman": _script_page("Hangman", "Launches the pygame Hangman game.", GAME_LOGIC_DIR / "hangman_game.py", icon="🔤"),
-    "maze": _script_page("Maze Game", "Launches the accessible pygame maze game with spoken movement.", GAME_LOGIC_DIR / "maze_game.py", icon="🧭"),
-    "madlibs": _script_page("Mad Libs", "Launches the accessible pygame Mad Libs game.", GAME_LOGIC_DIR / "madlibs_game.py", icon="📝"),
-    "escape": _script_page("Escape Room", "Launches the accessible Escape Room adventure game.", GAME_LOGIC_DIR / "escape_room_game.py", icon="🗝"),
-    "connect4": _script_page("Connect 4", "Launches the accessible pygame Connect 4 game.", GAME_LOGIC_DIR / "c4_game.py", icon="🔴"),
+    "hangman": _script_page("Hangman", "Launches the pygame Hangman game.", GAMES_DIR / "hangman_game.py", icon="🔤"),
+    "maze": _script_page("Maze Game", "Launches the accessible pygame maze game with spoken movement.", GAMES_DIR / "maze_game.py", icon="🧭"),
+    "madlibs": _script_page("Mad Libs", "Launches the accessible pygame Mad Libs game.", GAMES_DIR / "madlibs_game.py", icon="📝"),
+    "escape": _script_page("Escape Room", "Launches the accessible Escape Room adventure game.", GAMES_DIR / "escape_room_game.py", icon="🗝"),
+    "connect4": _script_page("Connect 4", "Launches the accessible pygame Connect 4 game.", GAMES_DIR / "c4_game.py", icon="🔴"),
     "apples": _simple_page(
         "Apples to Apples",
         "Host a new game and share your room code, or join a friend's game with their code.",
@@ -161,6 +160,7 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         # use the light theme and a dark-blue accent colour
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("dark-blue")
+        self._apply_responsive_scaling()
 
         self.title("HelloWorld GameSpace Launcher")
         self._set_initial_window_size()
@@ -309,6 +309,18 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
             Path(__file__).parent.parent, 
             id_token=session.id_token if (session := self.auth_session) else "",)
 
+    def _apply_responsive_scaling(self) -> None:
+        # scale UI consistently across laptops, desktops, and high-DPI displays
+        screen_w = max(1, self.winfo_screenwidth())
+        screen_h = max(1, self.winfo_screenheight())
+        baseline_w, baseline_h = 1920, 1080
+        scale_w = screen_w / baseline_w
+        scale_h = screen_h / baseline_h
+        # apply a slight uplift so typical screens don't feel undersized
+        target_scale = max(1.0, min(1.35, min(scale_w, scale_h) * 1.15))
+        ctk.set_widget_scaling(target_scale)
+        ctk.set_window_scaling(target_scale)
+
     def _set_initial_window_size(self) -> None:
         # start with tkinter's reported screen dimensions as a fallback
         screen_width = self.winfo_screenwidth()
@@ -335,8 +347,18 @@ class GameSpaceApp(ActionsMixin, NavigationMixin, LoginMixin, ctk.CTk):
         min_width = min(960, screen_width)
         min_height = min(640, screen_height)
 
+        # Fill the usable display area by default so users do not need to manually maximize.
         self.geometry(f"{screen_width}x{screen_height}+{origin_x}+{origin_y}")
         self.minsize(min_width, min_height)
+
+        # Prefer native maximize when available.
+        try:
+            if sys.platform.startswith("win"):
+                self.state("zoomed")
+            else:
+                self.attributes("-zoomed", True)
+        except Exception:
+            pass
 
     def _get_scoreboard(self) -> "Scoreboard | None":
         # create and cache a Scoreboard client on first call; return None if unavailable

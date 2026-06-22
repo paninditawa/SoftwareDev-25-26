@@ -19,6 +19,16 @@ import threading
 import time
 from pathlib import Path
 
+from game_theme import (
+    GAME_ACCENT as ACCENT_COLOR,
+    GAME_ACCENT_STRONG as ERROR_COLOR,
+    GAME_BG as BG_COLOR,
+    GAME_FOCUS as FOCUS_COLOR,
+    GAME_FONT_FAMILY,
+    GAME_MUTED as MUTED_TEXT,
+    GAME_TEXT as TEXT_COLOR,
+)
+
 # Ensure the project root containing `tts.py`
 # tts.py is used for text-to-speech output
 _this_file = Path(__file__).resolve()
@@ -47,12 +57,6 @@ except ImportError:
 # Basic configuration
 WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
-BG_COLOR = (248, 250, 252)
-TEXT_COLOR = (16, 37, 63)
-MUTED_TEXT = (39, 68, 95)
-ACCENT_COLOR = (14, 92, 168)
-FOCUS_COLOR = (255, 191, 71)
-ERROR_COLOR = (176, 83, 0)
 SAMPLE_RATE = 44100
 
 
@@ -268,9 +272,9 @@ class VoiceMadLibsGame:
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("Voice Mad Libs")
 
-        self.title_font = pygame.font.SysFont("segoeui", 56, bold=False)
-        self.text_font = pygame.font.SysFont("segoeui", 34, bold=False)
-        self.small_font = pygame.font.SysFont("segoeui", 26, bold=False)
+        self.title_font = pygame.font.SysFont(GAME_FONT_FAMILY, 56, bold=True)
+        self.text_font = pygame.font.SysFont(GAME_FONT_FAMILY, 34, bold=True)
+        self.small_font = pygame.font.SysFont(GAME_FONT_FAMILY, 26, bold=False)
         self.clock = pygame.time.Clock()
 
         # escape-room style cue sounds

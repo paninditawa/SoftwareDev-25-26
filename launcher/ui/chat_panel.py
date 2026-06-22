@@ -73,7 +73,7 @@ class ChatPanel(ctk.CTkFrame):
         )
         channel_bar.pack(fill="x", padx=14, pady=(0, 8))
         ctk.CTkLabel(
-            channel_bar, text="Live", text_color="#22c55e", font=_font(12)
+            channel_bar, text="Live", text_color="#166534", font=_font(12)
         ).pack(side="left", padx=(12, 6), pady=8)
         ctk.CTkLabel(
             channel_bar, text="general  |  All players", text_color=APP_TEXT, font=_font(13)
@@ -119,7 +119,7 @@ class ChatPanel(ctk.CTkFrame):
         # Keyboard shortcut hint
         hint = ctk.CTkLabel(
             self,
-            text="Tab to message input. Type message and press Enter to send. Press Ctrl+Q to close window. Press Ctrl+R to read chat messages.",
+            text="Tab to message input. Type message and press Enter to send. Press Escape to close window. Press Ctrl+R to read chat messages.",
             font=_font(11),
             text_color=APP_MUTED,
             wraplength=660,

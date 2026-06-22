@@ -241,14 +241,14 @@ class ActionsMixin:
         )
         chat_panel.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # Bind Ctrl+Q to close the window
-        chat_window.bind("<Control-q>", lambda e: chat_window.destroy())
+        # Bind Escape to close the window
+        chat_window.bind("<Escape>", lambda e: chat_window.destroy())
         chat_window.bind("<Control-e>", lambda e: chat_window.focus_force())
         
         # Ensure the chat window gets focus
         chat_window.after(1000, lambda: chat_window.focus_force())
 
-        self.speech.announce("Chat window opened. Press tab to enter message, enter to send, ctrl+R to read messages, and Ctrl+Q to close.", interrupt=True, force=True)
+        self.speech.announce("Chat window opened. Press tab to enter message, enter to send, Ctrl+R to read messages, and Escape to close.", interrupt=True, force=True)
 
     def _render_actions(self, page_key: str) -> None:
         # Called every time the user switches pages; wipes the old panel and draws the new one.

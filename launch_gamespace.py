@@ -25,7 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parent
 
 
 def _resolve_target(relative_target: str) -> Path:
-    # turn the relative path (e.g. "games/Battleship/client.py") into a full path
+    # turn the relative path (e.g. "games/battleship/client.py") into a full path
     return (REPO_ROOT / relative_target).resolve()
 
 
