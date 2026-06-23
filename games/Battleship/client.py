@@ -366,7 +366,9 @@ def survey_help():
 
 
 def announce_move():
-    _position_cue(selected_row, selected_col).play()
+    aiming = (phase == "battle" and inspect_mode == "fire")
+    if not aiming:
+        _position_cue(selected_row, selected_col).play()
     label = _coord_spoken(selected_row, selected_col)
     state = _describe_cell(selected_row, selected_col)
     mode_prefix = "Inspecting your grid. " if (phase == "battle" and inspect_mode == "own") else ""
@@ -743,7 +745,8 @@ def main():
 
             if dr or dc:
                 jump_buffer = ""
-                SND_MOVE.play()
+                if not (phase == "battle" and inspect_mode == "fire"):
+                    SND_MOVE.play()
                 if phase == "placement" and placed_count < len(SHIP_ORDER):
                     _, length = SHIP_ORDER[placed_count]
                     nr = max(0, min(BOARD_SIZE - 1, selected_row + dr))
