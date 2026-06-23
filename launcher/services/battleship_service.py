@@ -164,13 +164,14 @@ def join_game(code: str, username: str, user_id: str) -> int:
         supabase.table("battleship_players").select("*").eq("game_id", game_id).execute()
     )
 
-    # Rejoin if this user already has a slot
-    for p in existing:
-        if p.get("user_id") == user_id:
-            return int(p["player_num"])
-
+    # Rejoin only if the game is already in progress (reconnect after a crash)
     if game.get("phase") != "lobby":
+        for p in existing:
+            if p.get("user_id") == user_id:
+                return int(p["player_num"])
         raise RuntimeError("This game is already in progress.")
+
+    # Still in lobby — add as the next player slot
     if len(existing) >= 2:
         raise RuntimeError("Game is already full.")
 
