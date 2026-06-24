@@ -672,11 +672,9 @@ def main():
     pygame.display.set_caption("EchoFleet Battleship")
 
     speak_now(
-        f"Connected as player {args.player_num + 1}. Placement phase. "
-        "A random layout is loaded. Arrow keys to nudge each ship, "
-        "J to rotate, K to shuffle layouts, Enter to confirm each ship. "
-        "Press Enter again when all ships are placed to submit. "
-        "Press question mark at any time for the full command list."
+        f"Player {args.player_num + 1}, placement phase. "
+        "Arrows move, J rotates, Enter confirms. "
+        "Question mark for all commands."
     )
 
     threading.Thread(target=poll_supabase, daemon=True).start()
